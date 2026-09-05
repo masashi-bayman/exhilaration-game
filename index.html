@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>EXHILARATION — 皿割りブレイカー</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<div id="app">
+  <div id="stage">
+    <canvas id="game" width="960" height="720"></canvas>
+
+    <div id="overlay">
+      <!-- タイトル -->
+      <section id="screen-title" class="screen">
+        <h1 class="logo">EXHILARATION</h1>
+        <p class="tagline">皿 割 り ブ レ イ カ ー</p>
+        <p class="lead">割って、繋いで、増やして、数字を爆発させろ。</p>
+
+        <div class="modes">
+          <button class="mode easy" data-mode="easy">
+            <span class="mode-name">おきらく</span>
+            <span class="mode-sub">落ちない・当たり判定広め<br>ただひたすら割る快感</span>
+            <span class="mode-best">BEST <b id="best-easy">0</b></span>
+          </button>
+          <button class="mode hard" data-mode="hard">
+            <span class="mode-name">ガ チ</span>
+            <span class="mode-sub">残機3・ジャストガードで<br>貫通＆特大ボーナス<br>スコア倍率 x1.6</span>
+            <span class="mode-best">BEST <b id="best-hard">0</b></span>
+          </button>
+        </div>
+
+        <div class="help">
+          <div class="help-col">
+            <h3>操作</h3>
+            <ul>
+              <li><b>マウス / ←→ / A D</b> … パドル移動</li>
+              <li><b>SPACE / クリック</b> … 発射</li>
+              <li><b>SHIFT / J / 右クリック</b> … ジャストガード（ガチ）</li>
+              <li><b>E / F</b> … BURST 発動</li>
+              <li><b>P / ESC</b> 一時停止　<b>M</b> 消音　<b>R</b> リトライ</li>
+            </ul>
+          </div>
+          <div class="help-col">
+            <h3>気持ちよくなるコツ</h3>
+            <ul>
+              <li><b>コンボ</b>は割り続けている間だけ継続。音階が上がる。</li>
+              <li>パドルの<b>両端</b>で返すと EDGE ボーナス＋コンボ加算。</li>
+              <li><b>ジャストガード</b>成功でボールが5枚貫通する弾になる。</li>
+              <li>ゲージ満タンで <b>BURST</b>。割るたびにボールがねずみ算式に増殖し、<b>その間は床が安全</b>。</li>
+              <li><b>✸ 爆発皿</b>は周囲を巻き込んで大連鎖。</li>
+            </ul>
+          </div>
+        </div>
+        <p class="hint">SPACE ですぐ「おきらく」開始</p>
+      </section>
+
+      <!-- ポーズ -->
+      <section id="screen-pause" class="screen">
+        <h2 class="mid">PAUSE</h2>
+        <div class="btns">
+          <button class="btn" data-act="resume">つづける</button>
+          <button class="btn" data-act="retry">やり直す (R)</button>
+          <button class="btn ghost" data-act="title">タイトルへ (T)</button>
+        </div>
+      </section>
+
+      <!-- ゲームオーバー -->
+      <section id="screen-over" class="screen">
+        <h2 class="mid">GAME OVER</h2>
+        <p id="over-newbest" class="newbest">★ NEW RECORD ★</p>
+        <p class="over-mode">MODE: <span id="over-mode"></span></p>
+        <div class="score-big" id="over-score">0</div>
+        <div class="stats">
+          <div><span>到達ウェーブ</span><b id="over-wave">0</b></div>
+          <div><span>最大コンボ</span><b id="over-combo">0</b></div>
+          <div><span>最大ボール数</span><b id="over-balls">0</b></div>
+          <div><span>割った皿</span><b id="over-plates">0</b></div>
+          <div><span>ジャストガード</span><b id="over-perfect">0</b></div>
+          <div><span>BURST 回数</span><b id="over-burst">0</b></div>
+          <div class="wide"><span>BEST</span><b id="over-best">0</b></div>
+        </div>
+        <div class="btns">
+          <button class="btn" data-act="retry">もう一回 (R)</button>
+          <button class="btn ghost" data-act="title">タイトルへ (T)</button>
+        </div>
+      </section>
+    </div>
+
+    <div id="topright">
+      <button id="mute" class="mini" data-act="mute">🔊</button>
+      <button class="mini" data-act="pause">⏸</button>
+    </div>
+
+    <div id="touchbar">
+      <button class="touchbtn" data-act="guard">GUARD</button>
+      <button class="touchbtn burst" data-act="burst">BURST</button>
+    </div>
+  </div>
+</div>
+
+<script src="js/audio.js"></script>
+<script src="js/fx.js"></script>
+<script src="js/levels.js"></script>
+<script src="js/game.js"></script>
+<script src="js/render.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>
