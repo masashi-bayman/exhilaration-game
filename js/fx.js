@@ -20,6 +20,8 @@
   var zoom = 0; // 画面パンチ用の追加ズーム
 
   var MAX_SHARDS = 900, MAX_SPARKS = 900, MAX_POPS = 44;
+  var quality = 1;      // 0.3〜1。フレームレートに応じて main.js が調整する
+  var haptics = true;   // スマホの振動
 
   var FX = {
     reset: function () {
@@ -32,7 +34,7 @@
 
     // 皿の破片。角ばった多角形が回転しながら落ちる
     shatter: function (x, y, w, h, hue, count, power) {
-      count = count || 12;
+      count = Math.max(2, Math.round((count || 12) * quality));
       power = power || 1;
       if (shards.length > MAX_SHARDS) shards.splice(0, shards.length - MAX_SHARDS);
       for (var i = 0; i < count; i++) {
@@ -62,7 +64,7 @@
 
     // 小さい火花（軌跡つきの点）
     spark: function (x, y, count, hue, spread, speed) {
-      count = count || 8;
+      count = Math.max(1, Math.round((count || 8) * quality));
       speed = speed || 320;
       if (sparks.length > MAX_SPARKS) sparks.splice(0, sparks.length - MAX_SPARKS);
       for (var i = 0; i < count; i++) {
@@ -100,6 +102,16 @@
     // 直線の閃光（貫通・ジャストガード演出）
     streak: function (x, y, angle, len, color) {
       streaks.push({ x: x, y: y, a: angle, len: len, color: color, life: 0.25, max: 0.25 });
+    },
+
+    setQuality: function (q) { quality = q; },
+    getQuality: function () { return quality; },
+    setHaptics: function (h) { haptics = h; },
+
+    // スマホの振動（Android 系のみ。iOS Safari は無視される）
+    buzz: function (pattern) {
+      if (!haptics) return;
+      try { if (navigator.vibrate) navigator.vibrate(pattern); } catch (e) {}
     },
 
     /* --- 画面演出 ----------------------------------------- */

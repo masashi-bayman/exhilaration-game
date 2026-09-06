@@ -1,16 +1,19 @@
 # EXHILARATION — 皿割りブレイカー
 
 「割る」「繋ぐ」「増える」「数字が爆発する」を全部詰め込んだ、爽快感特化のブラウザゲーム。
-**依存ライブラリなし。`index.html` を開くだけで遊べます。**
+**依存ライブラリなし・ビルド不要。PWA なので iPhone / Android にストアを通さず入れられます。**
 
 ```
-git clone <this repo>
+git clone https://github.com/masashi-bayman/exhilaration-game.git
 cd exhilaration-game
-open index.html          # macOS
-# または index.html をブラウザにドラッグ&ドロップ
+python3 deploy/serve.py        # → http://localhost:8080/
 ```
 
-（ローカルサーバ経由でも動きます: `python3 -m http.server` → http://localhost:8000 ）
+`index.html` をブラウザに直接ドロップしても遊べますが、
+オフライン再生（Service Worker）とホーム画面への追加は **http(s) 経由** が必要です。
+
+配信・インストール手順は [📱 スマホに入れる](#-スマホに入れるストア不要) /
+[🌐 GitHub Pages](#-github-pages-で公開する) / [🍓 ラズパイ](#-ラズパイで動かす) を参照。
 
 ---
 
@@ -114,3 +117,169 @@ js/main.js        メインループ / 入力 / 画面遷移
 ```
 
 外部依存ゼロ、ビルド不要、全部バニラ JS + Canvas 2D です。
+
+
+---
+
+# 📱 スマホに入れる（ストア不要）
+
+このゲームは **PWA**（Progressive Web App）です。ブラウザで開いて「ホーム画面に追加」すると、
+アイコンが並び、アドレスバーなしの全画面で起動し、**機内モードでも遊べます**。
+App Store / Google Play への申請も、開発者登録も不要です。
+
+> **前提**: インストールできるのは **https:// で配信されている場合**（`localhost` は例外）。
+> GitHub Pages を使うのが一番早いです。ラズパイの `http://192.168.x.x` 直アクセスでも
+> **iPhone はホーム画面追加まで可能**ですが、Android のインストールとオフライン動作には
+> HTTPS が要ります（[ラズパイを HTTPS にする](#ラズパイを-https-にするpwa-をフルに使いたい場合)参照）。
+
+## iPhone / iPad（Safari）
+
+1. **Safari** でゲームの URL を開く（Chrome アプリからは追加できません）
+2. 下部の **共有ボタン** <kbd>⬆︎</kbd> をタップ
+3. **「ホーム画面に追加」** → 右上の **追加**
+4. ホーム画面のアイコンから起動 → 全画面で始まります
+
+- **音が鳴らないとき**: 本体側面の **サイレントスイッチを解除**してください。
+  （iOS は消音中に WebAudio が鳴らないため、無音の `<audio>` を鳴らして回避する処理を
+  `js/audio.js` に入れてありますが、機種によっては効かないことがあります）
+- iOS は画面の**バイブレーションに非対応**です（Android では振動します）
+- 横向き推奨。縦持ちだと「横向きにしてください」と案内が出ます
+
+## Android（Chrome / Edge）
+
+1. Chrome で URL を開く
+2. タイトル画面の **「📲 ホーム画面にアプリとして追加」** ボタンを押す
+   （出ない場合は右上メニュー → **「アプリをインストール」** / 「ホーム画面に追加」）
+3. ホーム画面のアイコンから起動 → 全画面・横向き固定で始まります
+
+Android は割る／爆発／ジャストガード／BURST のタイミングで**端末が振動**します（消音 `M` で一緒に切れます）。
+
+## スマホでの操作
+
+| 操作 | やり方 |
+|---|---|
+| パドル移動 | 画面をドラッグ |
+| 発射 | タップ |
+| ジャストガード | 画面左下の **GUARD** ボタン（ガチモードのみ表示） |
+| BURST | 画面右下の **BURST** ボタン（ガチモードのみ。おきらくは自動発動） |
+
+横長の端末では GUARD / BURST は**画面両端の黒帯**に置かれるので、盤面を隠しません。
+描画が重い端末では、フレームレートを見て粒子の量を自動的に落とします。
+
+## どうしても「本物のアプリ（APK / IPA）」にしたい場合
+
+PWA で困らないはずですが、参考まで:
+
+- **Android (APK)**: [PWABuilder](https://www.pwabuilder.com/) に公開 URL を入れると、
+  この PWA を包んだ署名済み APK を生成できます。端末の「提供元不明のアプリ」を許可して
+  サイドロードすればストア無しで配布可能です
+- **iPhone (IPA)**: 無料枠だと Xcode + AltStore などで 7 日ごとの再署名が必要になり、かなり面倒です。
+  **PWA を強く推奨します**
+
+---
+
+# 🌐 GitHub Pages で公開する
+
+`.github/workflows/pages.yml` を同梱してあるので、**設定を1回変えるだけ**で自動デプロイされます。
+
+1. GitHub のリポジトリ → **Settings** → **Pages**
+2. **Source** を **「GitHub Actions」** に変更
+3. このブランチに push すると Actions が走り、数十秒で公開されます
+
+公開 URL:
+
+```
+https://masashi-bayman.github.io/exhilaration-game/
+```
+
+- HTTPS なので **Android のインストールもオフライン動作もフルで効きます**
+- URL をそのままスマホに送れば、そこから「ホーム画面に追加」できます
+- ワークフローは `main` / `master` / `claude/**` への push で動きます
+
+---
+
+# 🍓 ラズパイで動かす
+
+同じ Wi-Fi の中で、家族や友達のスマホからも遊べるようにします。Pi Zero 2 W でも十分動きます
+（描画はブラウザ側なので、ラズパイはファイルを配るだけ）。
+
+## 一番かんたん（Python の常駐サーバ）
+
+```bash
+sudo apt update && sudo apt install -y git python3
+git clone https://github.com/masashi-bayman/exhilaration-game.git ~/exhilaration-game
+cd ~/exhilaration-game
+bash deploy/install-on-pi.sh          # systemd に登録して自動起動まで
+```
+
+終わると LAN の URL が表示されます:
+
+```
+http://192.168.x.x:8080/
+```
+
+| コマンド | 用途 |
+|---|---|
+| `sudo systemctl status exhilaration` | 状態確認 |
+| `sudo systemctl restart exhilaration` | 再起動 |
+| `sudo systemctl stop exhilaration` | 停止 |
+| `cd ~/exhilaration-game && git pull && sudo systemctl restart exhilaration` | 更新 |
+
+ポートを変えたいときは `PORT=9000 bash deploy/install-on-pi.sh`。
+
+## nginx で配信する場合
+
+```bash
+sudo apt install -y nginx
+sudo mkdir -p /var/www/exhilaration
+sudo cp -r ~/exhilaration-game/{index.html,css,js,icons,manifest.webmanifest,sw.js} /var/www/exhilaration/
+sudo cp ~/exhilaration-game/deploy/nginx-exhilaration.conf /etc/nginx/sites-available/exhilaration
+sudo ln -sf /etc/nginx/sites-available/exhilaration /etc/nginx/sites-enabled/
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+`deploy/nginx-exhilaration.conf` には PWA に必要な設定を入れてあります:
+`.webmanifest` の MIME 指定、`sw.js` のキャッシュ無効化、gzip。
+
+## 名前でアクセスしたい
+
+ラズパイの mDNS（avahi）が有効なら `http://raspberrypi.local:8080/` で届きます。
+`sudo raspi-config` でホスト名を `exhilaration` にすれば `http://exhilaration.local:8080/`。
+
+## ラズパイを HTTPS にする（PWA をフルに使いたい場合）
+
+LAN の `http://` のままでも **遊べますし、iPhone ならホーム画面にも追加できます**。
+ただし Android のインストールと Service Worker（オフライン再生）には HTTPS が必要です。おすすめ順:
+
+1. **Tailscale** — `sudo tailscale up`、`sudo tailscale cert <machine>.<tailnet>.ts.net` で
+   本物の証明書がもらえます。外出先からも繋がるのでこれが一番ラク
+2. **Cloudflare Tunnel** — `cloudflared tunnel` でドメイン付き HTTPS を無料で生やせます
+3. **自己署名証明書** — スマホ側に証明書をインストールする必要があり、iOS はかなり面倒なので非推奨
+
+なお、一度どこかの HTTPS（GitHub Pages など）でホーム画面に追加してしまえば、
+**その後はオフラインで動く**ので、ラズパイは「LAN 内で気軽に開く用」と割り切るのも手です。
+
+---
+
+# 🔄 更新したときの注意
+
+Service Worker がファイルをキャッシュしているため、**中身を書き換えたら `sw.js` の版数を上げてください**。
+
+```js
+var CACHE = 'exhilaration-v1';   // → 'exhilaration-v2' に変える
+```
+
+上げ忘れると、インストール済みの端末に古い版が出続けます。
+（開発中は DevTools → Application → Service Workers の "Update on reload" が便利です）
+
+---
+
+# 🛠 動作確認について
+
+Playwright + Chromium で以下を実機相当で確認済みです:
+
+- タイトル → 2モード → ウェーブ進行 → クリア → ポーズ → ゲームオーバー → リトライの全遷移
+- ジャストガードの成立、BURST でのボール増殖（44個到達）、爆発皿の連鎖
+- Service Worker の登録とオフライン起動、マニフェストの MIME / アイコン読み込み
+- iPhone 13 相当（844×390）でのタッチ操作・ボタン配置、縦持ち時の回転案内
+- 最も重い場面（ボール44個＋破片400個）で 50〜61fps

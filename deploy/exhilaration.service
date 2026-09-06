@@ -1,0 +1,29 @@
+# EXHILARATION を Python の簡易サーバで常駐配信する systemd ユニット
+#
+#   sudo cp deploy/exhilaration.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now exhilaration
+#
+# nginx を使う場合はこのユニットは不要です。
+
+[Unit]
+Description=EXHILARATION (皿割りブレイカー) static server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/exhilaration-game
+ExecStart=/usr/bin/python3 /home/pi/exhilaration-game/deploy/serve.py 8080
+Restart=on-failure
+RestartSec=3
+# 軽い読み取り専用サービスなので権限は絞っておく
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=
+
+[Install]
+WantedBy=multi-user.target

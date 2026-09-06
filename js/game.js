@@ -259,6 +259,7 @@
     FX.shake(16);
     FX.stop(0.07);
     FX.punch(0.02);
+    FX.buzz(30);
     if (depth > 3) return;
     for (var i = 0; i < G.plates.length; i++) {
       var q = G.plates[i];
@@ -289,6 +290,7 @@
     FX.stop(0.16);
     FX.punch(0.05);
     FX.ring(W / 2, H / 2, 20, 700, '#ffffff', 0.6, 14);
+    FX.buzz([0, 45, 35, 70, 35, 110]);
     FX.pop(W / 2, H / 2 - 40, 'B U R S T !', '#fff', 62, -30);
     // 起点のボールを一気に3つに
     if (G.balls.length) {
@@ -348,6 +350,7 @@
     FX.stop(0.1);
     FX.punch(0.028);
     FX.ring(b.x, b.y, 10, 190, '#ffe66d', 0.5, 8);
+    FX.buzz([0, 16, 22, 45]);
     FX.streak(b.x, b.y - 60, Math.PI / 2, 260, '#fff6c0');
     FX.pop(b.x, b.y - 40, 'JUST GUARD!', '#ffe66d', 34, -80);
     FX.pop(b.x, b.y - 8, '+' + fmt(bonus), '#fff', 20, -50);
@@ -654,6 +657,7 @@
     FX.flash(0.4, '255,80,80');
     FX.shake(20);
     FX.stop(0.12);
+    FX.buzz(140);
     if (G.lives <= 0) {
       gameOver();
     } else {
@@ -682,6 +686,7 @@
     FX.shake(18);
     FX.punch(0.03);
     FX.ring(W / 2, H / 2, 30, 820, '#8ef', 0.7, 12);
+    FX.buzz([0, 30, 45, 60]);
     FX.pop(W / 2, H / 2 - 60, 'WAVE ' + G.wave + ' CLEAR!', '#fff', 52, -20);
     FX.pop(W / 2, H / 2 + 10, 'BONUS +' + fmt(bonus), '#ffe66d', 30, -30);
     for (var i = 0; i < 60; i++) {

@@ -353,36 +353,30 @@
 
     ctx.textBaseline = 'middle';
 
-    // SCORE
+    // SCORE（左）
     ctx.textAlign = 'left';
     ctx.fillStyle = 'rgba(150,180,220,.75)';
     ctx.font = '700 12px system-ui, sans-serif';
-    ctx.fillText('SCORE', 22, 20);
-    var big = G.score - G.shownScore > 1 ? 1 : 0;
-    ctx.fillStyle = big ? '#ffe66d' : '#ffffff';
-    ctx.font = '900 34px "Arial Black", Impact, sans-serif';
-    ctx.fillText(fmt(G.shownScore), 22, 46);
+    ctx.fillText('SCORE', 22, 17);
+    ctx.fillStyle = (G.score - G.shownScore > 1) ? '#ffe66d' : '#ffffff';
+    ctx.font = '900 32px "Arial Black", Impact, sans-serif';
+    ctx.fillText(fmt(G.shownScore), 22, 41);
+    // BEST はスコアの下に小さく（右上はボタン用に空けておく）
+    ctx.fillStyle = 'rgba(150,180,220,.62)';
+    ctx.font = '700 12px system-ui, sans-serif';
+    ctx.fillText('BEST  ' + fmt(Math.max(G.best, G.score)), 22, 62);
 
-    // WAVE
+    // WAVE（中央）
     ctx.textAlign = 'center';
     ctx.fillStyle = 'rgba(150,180,220,.75)';
     ctx.font = '700 12px system-ui, sans-serif';
-    ctx.fillText('WAVE', W / 2, 20);
+    ctx.fillText('WAVE', W / 2, 17);
     ctx.fillStyle = '#9fe4ff';
     ctx.font = '900 30px "Arial Black", Impact, sans-serif';
-    ctx.fillText(G.wave + '', W / 2, 45);
+    ctx.fillText(G.wave + '', W / 2, 41);
     ctx.fillStyle = 'rgba(150,180,220,.6)';
     ctx.font = '700 11px system-ui, sans-serif';
-    ctx.fillText('x' + G.waveMul.toFixed(2) + '  ' + G.layoutName, W / 2, 64);
-
-    // BEST
-    ctx.textAlign = 'right';
-    ctx.fillStyle = 'rgba(150,180,220,.75)';
-    ctx.font = '700 12px system-ui, sans-serif';
-    ctx.fillText('BEST  /  ' + G.cfg.label, W - 22, 20);
-    ctx.fillStyle = '#c9d8ff';
-    ctx.font = '900 24px "Arial Black", Impact, sans-serif';
-    ctx.fillText(fmt(Math.max(G.best, G.score)), W - 22, 46);
+    ctx.fillText(G.cfg.label + '  /  x' + G.waveMul.toFixed(2) + '  /  ' + G.layoutName, W / 2, 62);
 
     ctx.restore();
   }
