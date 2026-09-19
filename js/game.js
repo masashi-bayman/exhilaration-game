@@ -56,12 +56,41 @@
     plates: [], remaining: 0, layoutName: '',
     balls: [], paddle: null,
 
+    // --- レベルアップ（3択強化） ---
+    level: 1, xp: 0, xpNeed: 6, pendingLevels: 0,
+    upLv: {}, choices: [], rerolls: 0, resumeState: 'play',
+    safety: 0, comboMax: 2.6, burstMax: 6.5,
+
     timeScale: 1, stateTimer: 0, elapsed: 0,
     guardWindow: 0, guardCd: 0, guardFlash: 0, guardArmed: false,
     hype: 0,              // 背景の盛り上がり 0..1
     bannerText: '', bannerSub: '', bannerTimer: 0,
     newBest: false
   };
+
+  /* ---------------------------------------------------------
+     強化（upLv）から導かれる実際の数値
+     --------------------------------------------------------- */
+
+  function lv(id) { return G.upLv[id] || 0; }
+
+  function paddleWidth() {
+    return G.cfg.paddleW * (1 + 0.13 * lv('paddle')) * (G.burst > 0 ? 1.18 : 1);
+  }
+  function ballRadius() { return BALL_R * (1 + 0.18 * lv('size')); }
+  function ballBaseSpeed() {
+    return G.cfg.ballSpeed * (1 + (G.wave - 1) * G.cfg.speedUp) * (1 + 0.07 * lv('speed'));
+  }
+  function scoreMul() {
+    return G.cfg.scoreScale * (1 + 0.22 * lv('score')) * (1 + 0.08 * lv('speed'));
+  }
+  function comboTime() { return G.cfg.comboTime + 0.35 * lv('comboTime'); }
+  function gaugeRate() { return G.cfg.gaugeRate * (1 + 0.28 * lv('gauge')); }
+  function burstTime() { return BURST_TIME + 1.6 * lv('burstTime'); }
+  function guardWindowLen() { return GUARD_WINDOW * (1 + 0.35 * lv('guardWin')); }
+
+  function xpNeedFor(level) { return Math.round(6 * Math.pow(1.16, level - 1)); }
+  function xpValue(type) { return type === 1 ? 1 : (type === 2 ? 2 : (type === 3 ? 3 : 2)); }
 
   /* ---------------------------------------------------------
      初期化
@@ -87,6 +116,9 @@
     G.timeScale = 1; G.elapsed = 0;
     G.guardWindow = 0; G.guardCd = 0; G.guardFlash = 0;
     G.hype = 0; G.newBest = false;
+    G.level = 1; G.xp = 0; G.xpNeed = xpNeedFor(1); G.pendingLevels = 0;
+    G.upLv = {}; G.choices = []; G.rerolls = 0; G.safety = 0;
+    G.comboMax = G.cfg.comboTime; G.burstMax = BURST_TIME;
     G.paddle = { x: W / 2, w: G.cfg.paddleW, vx: 0, glow: 0, squash: 0 };
     FX.reset();
     buildWave(1);
@@ -115,15 +147,25 @@
         });
       }
     }
+    // 強化「爆発皿の増設」
+    var extraBombs = 2 * lv('bomb');
+    for (var e = 0; e < extraBombs; e++) {
+      var cands = G.plates.filter(function (q) { return q.type !== 4; });
+      if (!cands.length) break;
+      var pick = cands[(Math.random() * cands.length) | 0];
+      pick.type = 4; pick.hp = 1; pick.maxhp = 1; pick.hue = 45;
+    }
+
     G.remaining = G.plates.length;
     G.waveMul = Math.pow(1.28, wave - 1);
+    G.safety = lv('safety');   // 安全ネットはウェーブごとに回復
   }
 
   function resetBall() {
     G.balls = [{
-      x: G.paddle.x, y: PADDLE_Y - BALL_R - 2,
-      vx: 0, vy: 0, r: BALL_R,
-      speed: G.cfg.ballSpeed * (1 + (G.wave - 1) * G.cfg.speedUp),
+      x: G.paddle.x, y: PADDLE_Y - ballRadius() - 2,
+      vx: 0, vy: 0, r: ballRadius(),
+      speed: ballBaseSpeed(),
       pierce: 0, charged: 0, stuck: true, trail: [], hue: 190, born: 0
     }];
   }
@@ -143,10 +185,10 @@
     if (launched) {
       Sfx.paddle(0);
       G.state = 'play';
-      if (G.mode === 'easy' && G.balls.length === 1) {
+      var extra = (G.mode === 'easy' ? 2 : 0) + lv('balls');
+      if (extra > 0 && G.balls.length === 1) {
         var b0 = G.balls[0];
-        spawnBall(b0.x, b0.y - 4, 320);
-        spawnBall(b0.x, b0.y - 4, 90);
+        for (var k = 0; k < extra; k++) spawnBall(b0.x, b0.y - 4, (90 + k * 77) % 360);
       }
     }
   }
@@ -159,16 +201,17 @@
 
   function addCombo(n) {
     G.combo += n;
-    G.comboTimer = G.cfg.comboTime;
+    G.comboMax = comboTime();
+    G.comboTimer = G.comboMax;
     if (G.combo > G.comboBest) G.comboBest = G.combo;
   }
 
   function spawnBall(x, y, hue) {
     if (G.balls.length >= G.cfg.ballCap) return null;
-    var base = G.cfg.ballSpeed * (1 + (G.wave - 1) * G.cfg.speedUp);
+    var base = ballBaseSpeed();
     var a = y > H * 0.55 ? (-Math.PI / 2 + rnd(-1.05, 1.05)) : rnd(0, Math.PI * 2);
     var b = {
-      x: x, y: y, vx: Math.cos(a), vy: Math.sin(a), r: BALL_R,
+      x: x, y: y, vx: Math.cos(a), vy: Math.sin(a), r: ballRadius(),
       speed: clamp(base * rnd(0.95, 1.15), 200, G.cfg.maxSpeed),
       pierce: 0, charged: 0, stuck: false, trail: [], hue: hue == null ? rnd(0, 360) : hue, born: 0.12
     };
@@ -180,16 +223,16 @@
     return b;
   }
 
-  function damagePlate(p, ball) {
+  function damagePlate(p, ball, dmg) {
     var c = plateCenter(p);
-    p.hp--;
+    p.hp -= (dmg || 1);
     p.shine = 1;
     G.comboTimer = Math.max(G.comboTimer, 0.5);
     Sfx.clink((c.x / W) * 2 - 1);
     FX.spark(c.x, c.y, 5, p.hue, null, 200);
     FX.shake(1.5);
     FX.stop(0.01);
-    G.score += Math.round(40 * G.waveMul * G.cfg.scoreScale);
+    G.score += Math.round(40 * G.waveMul * scoreMul());
   }
 
   function smash(p, depth) {
@@ -206,12 +249,14 @@
     addCombo(1);
 
     var mul = (1 + G.combo * 0.12) * (G.burst > 0 ? 3 : 1);
-    var gain = Math.round(100 * val * G.waveMul * mul * G.cfg.scoreScale);
+    var gain = Math.round(100 * val * G.waveMul * mul * scoreMul());
     G.score += gain;
     if (G.burst > 0) G.burstScore += gain;
 
+    G.xp += xpValue(p.type) * (1 + 0.3 * lv('xp'));
+
     if (G.burst <= 0) {
-      G.gauge = Math.min(100, G.gauge + val * G.cfg.gaugeRate * 1.35);
+      G.gauge = Math.min(100, G.gauge + val * gaugeRate() * 1.35);
       if (G.gauge >= 100 && !G.burstReadyNotified) {
         G.burstReadyNotified = true;
         G.gaugeReadyPulse = 1;
@@ -246,15 +291,55 @@
       FX.pop(c.x, c.y - 26, 'EXTRA BALL!', '#7CFFCB', 22, -60);
     }
 
+    // 強化「分裂」
+    if (G.burst <= 0 && lv('split') && G.balls.length < G.cfg.ballCap &&
+        Math.random() < 0.09 * lv('split')) {
+      spawnBall(c.x, c.y, 285);
+    }
+
+    // 強化「電撃連鎖」
+    if (lv('chain') && depth < 3 && Math.random() < 0.20 * lv('chain')) {
+      var q = nearestPlate(c.x, c.y, 210, p);
+      if (q) {
+        var qc = plateCenter(q);
+        FX.streak((c.x + qc.x) / 2, (c.y + qc.y) / 2,
+                  Math.atan2(qc.y - c.y, qc.x - c.x),
+                  Math.hypot(qc.x - c.x, qc.y - c.y), '#aee9ff');
+        FX.spark(qc.x, qc.y, 6, 195);
+        q.hp = 1;
+        smash(q, depth + 1);
+      }
+    }
+
+    // 強化「衝撃波」
+    if (p.type !== 4 && lv('explode') && depth < 3 &&
+        Math.random() < 0.12 * lv('explode')) {
+      explode(c.x, c.y, depth, 76);
+    }
+
     if (p.type === 4) explode(c.x, c.y, depth);
   }
 
-  function explode(x, y, depth) {
-    var R = 108;
+  /** (x,y) から range 内でいちばん近い生きている皿 */
+  function nearestPlate(x, y, range, except) {
+    var best = null, bd = range * range;
+    for (var i = 0; i < G.plates.length; i++) {
+      var q = G.plates[i];
+      if (!q.alive || q === except || q.drop < 0.4) continue;
+      var c = plateCenter(q);
+      var dx = c.x - x, dy = c.y - y;
+      var d = dx * dx + dy * dy;
+      if (d < bd) { bd = d; best = q; }
+    }
+    return best;
+  }
+
+  function explode(x, y, depth, radius) {
+    var R = radius || 108;
     Sfx.boom((x / W) * 2 - 1);
     FX.ring(x, y, 8, R * 1.25, '#ffd166', 0.45, 9);
     FX.ring(x, y, 4, R * 0.7, '#ffffff', 0.3, 5);
-    FX.spark(x, y, 34, 45, null, 620);
+    FX.spark(x, y, Math.round(34 * R / 108), 45, null, 620);
     FX.flash(0.3, '255,205,90');
     FX.shake(16);
     FX.stop(0.07);
@@ -282,7 +367,8 @@
     G.gauge = 0;
     G.burstReadyNotified = false;
     G.burstScore = 0;
-    G.burst = BURST_TIME;
+    G.burstMax = burstTime();
+    G.burst = G.burstMax;
     G.burstUsed++;
     Sfx.burst();
     FX.flash(0.85, '255,255,255');
@@ -309,7 +395,7 @@
     // 余ったボールはスコアに変換して消える（後片付けも気持ちよく）
     while (G.balls.length > keep) {
       var b = G.balls.pop();
-      var bonus = Math.round(2500 * G.waveMul * G.cfg.scoreScale);
+      var bonus = Math.round(2500 * G.waveMul * scoreMul());
       G.score += bonus;
       FX.spark(b.x, b.y, 10, b.hue);
       FX.pop(b.x, b.y, '+' + fmt(bonus), '#9ad', 16);
@@ -324,7 +410,7 @@
   function pressGuard() {
     if (!G.cfg.guard || G.state !== 'play') return;
     if (G.guardCd > 0 || G.guardWindow > 0) return;
-    G.guardWindow = GUARD_WINDOW;
+    G.guardWindow = guardWindowLen();
     G.guardArmed = true;
   }
 
@@ -341,7 +427,7 @@
     b.speed = clamp(b.speed * 1.09, 200, G.cfg.maxSpeed);
     G.gauge = Math.min(100, G.gauge + 14);
 
-    var bonus = Math.round(3000 * G.waveMul * (1 + G.combo * 0.1) * G.cfg.scoreScale);
+    var bonus = Math.round(3000 * G.waveMul * (1 + G.combo * 0.1) * scoreMul());
     G.score += bonus;
 
     Sfx.perfect();
@@ -382,9 +468,10 @@
 
     sim *= G.timeScale;
 
-    FX.update(dt * (G.state === 'paused' ? 0 : 1));
+    var frozen = (G.state === 'paused' || G.state === 'levelup');
+    FX.update(dt * (frozen ? 0 : 1));
 
-    if (G.state === 'paused' || G.state === 'title' || G.state === 'gameover') {
+    if (frozen || G.state === 'title' || G.state === 'gameover') {
       G.shownScore += (G.score - G.shownScore) * Math.min(1, dt * 6);
       return;
     }
@@ -453,12 +540,23 @@
       }
     }
     if (G.bannerTimer > 0) G.bannerTimer -= dt;
+
+    // レベルアップ判定（一気に複数上がることもある）
+    while (G.xp >= G.xpNeed) {
+      G.xp -= G.xpNeed;
+      G.level++;
+      G.xpNeed = xpNeedFor(G.level);
+      G.pendingLevels++;
+    }
+    // BURST 中は水を差さない。終わってからまとめて選ばせる
+    if (G.pendingLevels > 0 && G.burst <= 0 &&
+        (G.state === 'play' || G.state === 'ready')) openLevelUp();
   }
 
   function updatePaddle(dt, input) {
     var pd = G.paddle;
     var prev = pd.x;
-    var targetW = G.cfg.paddleW * (G.burst > 0 ? 1.18 : 1);
+    var targetW = paddleWidth();
     pd.w += (targetW - pd.w) * Math.min(1, dt * 8);
 
     if (input.pointerActive) {
@@ -493,6 +591,19 @@
       } else {
         b.vx = b.vx / sp * b.speed;
         b.vy = b.vy / sp * b.speed;
+      }
+
+      // 強化「皿レーダー」：上昇中のボールが皿へ寄っていく
+      var mg = lv('magnet');
+      if (mg && b.vy < 0) {
+        var t = nearestPlate(b.x, b.y, 1200, null);
+        if (t) {
+          var tc = plateCenter(t);
+          b.vx += (tc.x > b.x ? 1 : -1) * 300 * mg * dt;
+          var s2 = Math.hypot(b.vx, b.vy) || 1;
+          b.vx = b.vx / s2 * b.speed;
+          b.vy = b.vy / s2 * b.speed;
+        }
       }
 
       // サブステップ移動（すり抜け防止）
@@ -542,6 +653,20 @@
         Sfx.wall(pan);
         return false;
       }
+      // 強化「安全ネット」
+      if (G.safety > 0) {
+        G.safety--;
+        b.y = H - b.r;
+        b.vy = -Math.abs(b.vy);
+        Sfx.ding();
+        FX.ring(b.x, H, 6, 150, '#7CFFCB', 0.5, 7);
+        FX.spark(b.x, H - 4, 14, 150, { a0: -Math.PI * 0.85, a1: -Math.PI * 0.15 }, 320);
+        FX.pop(b.x, H - 80, 'SAFE!  x' + G.safety, '#7CFFCB', 26, -70);
+        FX.flash(0.22, '124,255,203');
+        FX.shake(9);
+        FX.buzz(25);
+        return false;
+      }
       Sfx.miss();
       FX.spark(b.x, H - 10, 14, 0, { a0: -Math.PI * 0.9, a1: -Math.PI * 0.1 }, 300);
       FX.shake(6);
@@ -567,7 +692,10 @@
       var dx = b.x - cx, dy = b.y - cy;
       if (dx * dx + dy * dy > b.r * b.r) continue;
 
-      var pierce = b.pierce > 0;
+      var hasPierce = b.pierce > 0;
+      var luckyPierce = !hasPierce && lv('pierce') > 0 &&
+                        Math.random() < 0.14 * lv('pierce');
+      var pierce = hasPierce || luckyPierce;
       if (!pierce) {
         var ox = (p.w / 2 + b.r) - Math.abs(b.x - (p.x + p.w / 2));
         var oy = (p.h / 2 + b.r) - Math.abs(b.y - (p.y + p.h / 2));
@@ -580,11 +708,12 @@
         }
       }
 
-      if (p.hp > 1 && !pierce) {
-        damagePlate(p, b);
+      var dmg = 1 + lv('power');
+      if (p.hp > dmg && !pierce) {
+        damagePlate(p, b, dmg);
       } else {
         if (pierce) {
-          b.pierce--;
+          if (hasPierce) b.pierce--;
           FX.streak(b.x, b.y, Math.atan2(b.vy, b.vx), 120, '#fff2b0');
           addCombo(1);
         }
@@ -633,7 +762,7 @@
     if (Math.abs(off) > 0.74) {
       addCombo(1);
       b.speed = clamp(b.speed * 1.03, 200, G.cfg.maxSpeed);
-      var bonus = Math.round(600 * G.waveMul * G.cfg.scoreScale);
+      var bonus = Math.round(600 * G.waveMul * scoreMul());
       G.score += bonus;
       G.gauge = Math.min(100, G.gauge + 2);
       FX.pop(b.x, PADDLE_Y - 30, 'EDGE!', '#7CFFCB', 20, -70);
@@ -678,7 +807,7 @@
     if (G.burst > 0) { G.burst = 0; endBurst(); }
 
     var lifeBonus = (G.lives === Infinity ? 0 : G.lives * 8000);
-    var bonus = Math.round((12000 + lifeBonus + G.comboBest * 1200) * G.waveMul * G.cfg.scoreScale);
+    var bonus = Math.round((12000 + lifeBonus + G.comboBest * 1200) * G.waveMul * scoreMul());
     G.score += bonus;
 
     Sfx.waveClear();
@@ -715,6 +844,87 @@
     if (global.onGameOver) global.onGameOver();
   }
 
+  /* ---------------------------------------------------------
+     レベルアップ（3択強化）
+     --------------------------------------------------------- */
+
+  function openLevelUp() {
+    G.resumeState = (G.state === 'ready') ? 'ready' : 'play';
+    G.state = 'levelup';
+    G.choices = Upgrades.roll(G.mode, G.upLv, 3);
+    Sfx.levelUp();
+    FX.flash(0.45, '170,230,255');
+    FX.shake(10);
+    FX.punch(0.02);
+    FX.buzz([0, 25, 30, 25]);
+    if (global.onLevelUp) global.onLevelUp(G.choices);
+  }
+
+  function applyUpgrade(u) {
+    var n = (G.upLv[u.id] || 0) + 1;
+    G.upLv[u.id] = n;
+
+    switch (u.id) {
+      case 'life':
+        if (G.lives !== Infinity) G.lives++;
+        break;
+      case 'reroll':
+        G.rerolls++;
+        break;
+      case 'safety':
+        G.safety = n;
+        break;
+      case 'balls': {
+        var b0 = G.balls[0];
+        if (b0 && !b0.stuck) spawnBall(b0.x, b0.y - 6, 200);
+        break;
+      }
+      case 'bonus': {
+        var bo = Math.round(50000 * G.waveMul * scoreMul());
+        G.score += bo;
+        FX.pop(W / 2, H * 0.5, '+' + fmt(bo), '#ffe66d', 46, -30);
+        break;
+      }
+    }
+
+    // 既存のボール・パドルにも即反映
+    var r = ballRadius();
+    for (var i = 0; i < G.balls.length; i++) {
+      var b = G.balls[i];
+      b.r = r;
+      if (u.id === 'speed') b.speed = clamp(b.speed * 1.07, 200, G.cfg.maxSpeed);
+    }
+    G.paddle.w = paddleWidth();
+    G.comboMax = comboTime();
+
+    FX.pop(W / 2, H * 0.40, u.icon + ' ' + u.name + '  Lv.' + n, '#7CFFCB', 30, -50);
+    FX.ring(W / 2, H * 0.45, 20, 420, '#7CFFCB', 0.5, 7);
+  }
+
+  function pickUpgrade(i) {
+    if (G.state !== 'levelup') return;
+    var u = G.choices[i];
+    if (!u) return;
+    applyUpgrade(u);
+    G.pendingLevels = Math.max(0, G.pendingLevels - 1);
+    Sfx.ui();
+    if (G.pendingLevels > 0) {
+      G.choices = Upgrades.roll(G.mode, G.upLv, 3);
+      if (global.onLevelUp) global.onLevelUp(G.choices);
+    } else {
+      G.state = G.resumeState;
+      if (global.onLevelUpClose) global.onLevelUpClose();
+    }
+  }
+
+  function rerollChoices() {
+    if (G.state !== 'levelup' || G.rerolls <= 0) return;
+    G.rerolls--;
+    G.choices = Upgrades.roll(G.mode, G.upLv, 3);
+    Sfx.ui();
+    if (global.onLevelUp) global.onLevelUp(G.choices);
+  }
+
   function quitToTitle() {
     if (G.state !== 'title' && G.score > G.best) {
       G.best = Math.floor(G.score);
@@ -728,6 +938,7 @@
     MODES: MODES, G: G,
     start: start, update: update, launch: launch,
     pressGuard: pressGuard, triggerBurst: triggerBurst,
+    pickUpgrade: pickUpgrade, rerollChoices: rerollChoices,
     loadBest: loadBest, quitToTitle: quitToTitle, fmt: fmt, clamp: clamp
   };
 })(window);

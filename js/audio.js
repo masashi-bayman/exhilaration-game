@@ -199,6 +199,15 @@
       tone({ freq: 380, to: 70, type: 'sawtooth', dur: 0.5, gain: 0.16 });
     },
 
+    /* レベルアップ（3択が出るとき） */
+    levelUp: function () {
+      [0, 7, 12, 16, 19].forEach(function (sv, i) {
+        tone({ freq: midi(sv + 24), type: 'triangle', dur: 0.5, gain: 0.16, delay: i * 0.055 });
+      });
+      tone({ freq: midi(36), to: midi(48), type: 'sine', dur: 0.5, gain: 0.1, delay: 0.25 });
+      noise({ freq: 400, to: 9000, dur: 0.4, gain: 0.07, q: 0.5 });
+    },
+
     /* ウェーブクリア */
     waveClear: function () {
       [0, 4, 7, 12, 19, 24].forEach(function (s, i) {

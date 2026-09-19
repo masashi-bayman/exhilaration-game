@@ -2,7 +2,7 @@
    sw.js  --  オフライン再生用 Service Worker
    キャッシュ優先。ファイルを更新したら CACHE の版数を上げること。
    ============================================================ */
-var CACHE = 'exhilaration-v1';
+var CACHE = 'exhilaration-v2';
 
 var ASSETS = [
   './',
@@ -12,6 +12,7 @@ var ASSETS = [
   './js/audio.js',
   './js/fx.js',
   './js/levels.js',
+  './js/upgrades.js',
   './js/game.js',
   './js/render.js',
   './js/main.js',

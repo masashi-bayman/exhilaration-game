@@ -62,6 +62,8 @@
               <li><b>ジャストガード</b>成功でボールが5枚貫通する弾になる。</li>
               <li>ゲージ満タンで <b>BURST</b>。割るたびにボールがねずみ算式に増殖し、<b>その間は床が安全</b>。</li>
               <li><b>✸ 爆発皿</b>は周囲を巻き込んで大連鎖。</li>
+            <li>皿を割ると<b>経験値</b>。レベルが上がるたび <b>3つの強化から1つ選ぶ</b>。
+                重ねるほど画面が壊れていく。</li>
             </ul>
           </div>
         </div>
@@ -72,9 +74,23 @@
         </p>
       </section>
 
+      <!-- レベルアップ（3択強化） -->
+      <section id="screen-levelup" class="screen levelup">
+        <p class="lv-kicker">LEVEL UP!</p>
+        <h2 class="lv-title">LV <span id="lv-num">2</span></h2>
+        <p class="lv-sub">強化を 1 つ選ぶ</p>
+        <div id="lv-cards" class="cards"></div>
+        <div class="lv-foot">
+          <button id="lv-reroll" class="btn ghost">🔄 引き直す（残り <b id="lv-rerolls">0</b>）</button>
+          <span class="lv-hint"><b>1</b> / <b>2</b> / <b>3</b> キー、またはクリック</span>
+        </div>
+        <div id="lv-have" class="have"></div>
+      </section>
+
       <!-- ポーズ -->
       <section id="screen-pause" class="screen">
         <h2 class="mid">PAUSE</h2>
+        <div id="pause-have" class="have"></div>
         <div class="btns">
           <button class="btn" data-act="resume">つづける</button>
           <button class="btn" data-act="retry">やり直す (R)</button>
@@ -89,6 +105,7 @@
         <p class="over-mode">MODE: <span id="over-mode"></span></p>
         <div class="score-big" id="over-score">0</div>
         <div class="stats">
+          <div><span>到達レベル</span><b id="over-level">1</b></div>
           <div><span>到達ウェーブ</span><b id="over-wave">0</b></div>
           <div><span>最大コンボ</span><b id="over-combo">0</b></div>
           <div><span>最大ボール数</span><b id="over-balls">0</b></div>
@@ -97,6 +114,7 @@
           <div><span>BURST 回数</span><b id="over-burst">0</b></div>
           <div class="wide"><span>BEST</span><b id="over-best">0</b></div>
         </div>
+        <div id="over-have" class="have"></div>
         <div class="btns">
           <button class="btn" data-act="retry">もう一回 (R)</button>
           <button class="btn ghost" data-act="title">タイトルへ (T)</button>
@@ -125,6 +143,7 @@
 <script src="js/audio.js"></script>
 <script src="js/fx.js"></script>
 <script src="js/levels.js"></script>
+<script src="js/upgrades.js"></script>
 <script src="js/game.js"></script>
 <script src="js/render.js"></script>
 <script src="js/main.js"></script>

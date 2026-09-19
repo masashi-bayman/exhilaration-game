@@ -90,7 +90,7 @@
   /* ---------- 巨大コンボ数字（背景） ---------- */
   function drawComboGhost(ctx) {
     if (G.combo < 3) return;
-    var k = clamp(G.comboTimer / G.cfg.comboTime, 0, 1);
+    var k = clamp(G.comboTimer / (G.comboMax || 1), 0, 1);
     var pulse = 1 + 0.06 * Math.sin(G.elapsed * 22);
     var size = (110 + Math.min(180, G.combo * 5)) * pulse;
     ctx.save();
@@ -351,32 +351,49 @@
     ctx.fillStyle = 'rgba(120,190,255,.35)';
     ctx.fillRect(0, HUD_H - 2, W, 2);
 
+    // 経験値バー（画面最上段いっぱい）
+    var xk = clamp(G.xp / (G.xpNeed || 1), 0, 1);
+    ctx.fillStyle = 'rgba(255,255,255,.08)';
+    ctx.fillRect(0, 0, W, 6);
+    var xg = ctx.createLinearGradient(0, 0, W, 0);
+    xg.addColorStop(0, '#7CFFCB');
+    xg.addColorStop(1, '#5fd0ff');
+    ctx.fillStyle = xg;
+    ctx.fillRect(0, 0, W * xk, 6);
+    if (xk > 0.985) {
+      ctx.fillStyle = 'rgba(255,255,255,' + (0.3 + 0.3 * Math.sin(G.elapsed * 18)).toFixed(2) + ')';
+      ctx.fillRect(0, 0, W, 6);
+    }
+
     ctx.textBaseline = 'middle';
 
     // SCORE（左）
     ctx.textAlign = 'left';
+    ctx.fillStyle = '#7CFFCB';
+    ctx.font = '900 13px "Arial Black", sans-serif';
+    ctx.fillText('LV ' + G.level, 22, 20);
     ctx.fillStyle = 'rgba(150,180,220,.75)';
     ctx.font = '700 12px system-ui, sans-serif';
-    ctx.fillText('SCORE', 22, 17);
+    ctx.fillText('SCORE', 76, 20);
     ctx.fillStyle = (G.score - G.shownScore > 1) ? '#ffe66d' : '#ffffff';
     ctx.font = '900 32px "Arial Black", Impact, sans-serif';
-    ctx.fillText(fmt(G.shownScore), 22, 41);
+    ctx.fillText(fmt(G.shownScore), 22, 43);
     // BEST はスコアの下に小さく（右上はボタン用に空けておく）
     ctx.fillStyle = 'rgba(150,180,220,.62)';
     ctx.font = '700 12px system-ui, sans-serif';
-    ctx.fillText('BEST  ' + fmt(Math.max(G.best, G.score)), 22, 62);
+    ctx.fillText('BEST  ' + fmt(Math.max(G.best, G.score)), 22, 63);
 
     // WAVE（中央）
     ctx.textAlign = 'center';
     ctx.fillStyle = 'rgba(150,180,220,.75)';
     ctx.font = '700 12px system-ui, sans-serif';
-    ctx.fillText('WAVE', W / 2, 17);
+    ctx.fillText('WAVE', W / 2, 20);
     ctx.fillStyle = '#9fe4ff';
     ctx.font = '900 30px "Arial Black", Impact, sans-serif';
-    ctx.fillText(G.wave + '', W / 2, 41);
+    ctx.fillText(G.wave + '', W / 2, 43);
     ctx.fillStyle = 'rgba(150,180,220,.6)';
     ctx.font = '700 11px system-ui, sans-serif';
-    ctx.fillText(G.cfg.label + '  /  x' + G.waveMul.toFixed(2) + '  /  ' + G.layoutName, W / 2, 62);
+    ctx.fillText(G.cfg.label + '  /  x' + G.waveMul.toFixed(2) + '  /  ' + G.layoutName, W / 2, 63);
 
     ctx.restore();
   }
@@ -401,13 +418,21 @@
       ctx.fillText('∞ おきらくモード', 22, H - 22);
     }
 
+    // 安全ネットの残量
+    if (G.safety > 0) {
+      ctx.textAlign = 'left';
+      ctx.fillStyle = '#7CFFCB';
+      ctx.font = '900 13px "Arial Black", sans-serif';
+      ctx.fillText('🕸 x' + G.safety, 22, H - 46);
+    }
+
     // ゲージ / BURST タイマー
     var bw = 340, bx = W / 2 - bw / 2, by = H - 28, bh = 12;
     ctx.fillStyle = 'rgba(255,255,255,.10)';
     roundRect(ctx, bx, by, bw, bh, 6); ctx.fill();
 
     if (G.burst > 0) {
-      var k = G.burst / 6.5;
+      var k = G.burst / (G.burstMax || 6.5);
       var gg = ctx.createLinearGradient(bx, 0, bx + bw, 0);
       gg.addColorStop(0, 'hsl(' + ((G.elapsed * 300) % 360) + ',100%,60%)');
       gg.addColorStop(0.5, 'hsl(' + ((G.elapsed * 300 + 120) % 360) + ',100%,60%)');
@@ -437,7 +462,7 @@
     // コンボ（数値表示）
     ctx.textAlign = 'right';
     if (G.combo > 0) {
-      var kk = clamp(G.comboTimer / G.cfg.comboTime, 0, 1);
+      var kk = clamp(G.comboTimer / (G.comboMax || 1), 0, 1);
       ctx.fillStyle = G.combo >= 20 ? '#ffe66d' : '#9fe4ff';
       ctx.font = '900 22px "Arial Black", sans-serif';
       ctx.fillText(G.combo + ' COMBO', W - 22, H - 24);

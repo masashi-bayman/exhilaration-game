@@ -26,7 +26,8 @@
   var screens = {
     title: document.getElementById('screen-title'),
     pause: document.getElementById('screen-pause'),
-    over: document.getElementById('screen-over')
+    over: document.getElementById('screen-over'),
+    levelup: document.getElementById('screen-levelup')
   };
 
   function showScreen(name) {
@@ -48,8 +49,81 @@
     showScreen(null);
   }
 
+  /* ---------- レベルアップ（3択強化） ---------- */
+  var cardsEl = document.getElementById('lv-cards');
+  var rerollBtn = document.getElementById('lv-reroll');
+
+  /** 取得済み強化をチップで並べる */
+  function renderHave(el) {
+    if (!el) return;
+    var ids = Object.keys(G.upLv);
+    el.innerHTML = '';
+    ids.forEach(function (id) {
+      var u = Upgrades.get(id);
+      if (!u || !G.upLv[id]) return;
+      var d = document.createElement('div');
+      d.className = 'have-item';
+      d.innerHTML = '<span class="hi-icon"></span><span class="hi-name"></span>' +
+                    '<span class="hi-lv"></span>';
+      d.querySelector('.hi-icon').textContent = u.icon;
+      d.querySelector('.hi-name').textContent = u.name;
+      d.querySelector('.hi-lv').textContent = 'Lv.' + G.upLv[id];
+      el.appendChild(d);
+    });
+  }
+
+  function renderCards(choices) {
+    cardsEl.innerHTML = '';
+    choices.forEach(function (u, i) {
+      var cur = G.upLv[u.id] || 0;
+      var next = cur + 1;
+      var btn = document.createElement('button');
+      btn.className = 'card t' + (u.tier || 1) + (next >= u.max && u.id !== 'bonus' ? ' maxed' : '');
+      btn.innerHTML =
+        '<span class="card-key"></span>' +
+        '<span class="card-icon"></span>' +
+        '<span class="card-name"></span>' +
+        '<span class="card-lv"></span>' +
+        '<span class="card-desc"></span>' +
+        '<span class="card-pips"></span>';
+      btn.querySelector('.card-key').textContent = (i + 1);
+      btn.querySelector('.card-icon').textContent = u.icon;
+      btn.querySelector('.card-name').textContent = u.name;
+      btn.querySelector('.card-lv').textContent =
+        (u.id === 'bonus') ? 'ボーナス'
+          : (cur === 0 ? 'NEW!' : 'Lv.' + cur + ' → Lv.' + next);
+      btn.querySelector('.card-desc').textContent = u.desc(next);
+
+      // 上限までの段階をピップで表示
+      if (u.id !== 'bonus') {
+        var pips = btn.querySelector('.card-pips');
+        for (var k = 0; k < u.max; k++) {
+          var pip = document.createElement('span');
+          pip.className = 'card-pip' + (k < cur ? ' on' : (k === cur ? ' next' : ''));
+          pips.appendChild(pip);
+        }
+      }
+      btn.addEventListener('click', function () { Game.pickUpgrade(i); });
+      cardsEl.appendChild(btn);
+    });
+  }
+
+  global.onLevelUp = function (choices) {
+    document.getElementById('lv-num').textContent = G.level;
+    document.getElementById('lv-rerolls').textContent = G.rerolls;
+    rerollBtn.disabled = G.rerolls <= 0;
+    renderCards(choices);
+    renderHave(document.getElementById('lv-have'));
+    showScreen('levelup');
+  };
+
+  global.onLevelUpClose = function () { showScreen(null); };
+
+  rerollBtn.addEventListener('click', function () { Game.rerollChoices(); });
+
   global.onGameOver = function () {
     document.getElementById('over-score').textContent = Game.fmt(G.score);
+    document.getElementById('over-level').textContent = G.level;
     document.getElementById('over-wave').textContent = G.wave;
     document.getElementById('over-combo').textContent = G.comboBest;
     document.getElementById('over-balls').textContent = G.maxBallsSeen;
@@ -59,6 +133,7 @@
     document.getElementById('over-best').textContent = Game.fmt(G.best);
     document.getElementById('over-newbest').style.display = G.newBest ? 'block' : 'none';
     document.getElementById('over-mode').textContent = G.cfg.label;
+    renderHave(document.getElementById('over-have'));
     setTimeout(function () { showScreen('over'); }, 900);
   };
 
@@ -69,6 +144,7 @@
     } else if (['ready', 'play', 'waveclear', 'dead'].indexOf(G.state) >= 0) {
       pausedFrom = G.state;
       G.state = 'paused';
+      renderHave(document.getElementById('pause-have'));
       showScreen('pause');
     }
   }
@@ -116,6 +192,16 @@
 
   document.addEventListener('keydown', function (e) {
     var c = e.code;
+
+    // レベルアップ中は 1/2/3 と引き直しだけ受け付ける
+    if (G.state === 'levelup') {
+      if (c === 'Digit1' || c === 'Numpad1') { e.preventDefault(); Game.pickUpgrade(0); return; }
+      if (c === 'Digit2' || c === 'Numpad2') { e.preventDefault(); Game.pickUpgrade(1); return; }
+      if (c === 'Digit3' || c === 'Numpad3') { e.preventDefault(); Game.pickUpgrade(2); return; }
+      if (c === 'KeyR') { e.preventDefault(); Game.rerollChoices(); return; }
+      if (c === 'Space') { e.preventDefault(); return; }
+    }
+
     if (c === 'ArrowLeft' || c === 'KeyA') { input.left = true; input.pointerActive = false; }
     if (c === 'ArrowRight' || c === 'KeyD') { input.right = true; input.pointerActive = false; }
     if (c === 'Space') {

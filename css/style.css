@@ -156,6 +156,102 @@ canvas#game {
 .btn:hover { transform: translateY(-2px); filter: brightness(1.1); }
 .btn.ghost { background: transparent; color: #a8c2e6; border: 1px solid rgba(140,190,255,.4); }
 
+/* ---------------- レベルアップ（3択強化） ---------------- */
+#screen-levelup { max-width: 900px; }
+.lv-kicker {
+  margin: 0; font: 900 13px/1 "Arial Black", sans-serif; letter-spacing: .35em;
+  color: #7CFFCB; text-shadow: 0 0 18px rgba(124,255,203,.5);
+  animation: blink 1s steps(2, jump-none) infinite;
+}
+.lv-title {
+  margin: 2px 0 0;
+  font: 900 clamp(30px, 6vw, 52px)/1 "Arial Black", Impact, sans-serif;
+  color: #fff; letter-spacing: .06em;
+}
+.lv-title span { color: #7CFFCB; }
+.lv-sub { margin: 2px 0 14px; font-size: 12px; letter-spacing: .2em; color: #8fa8cc; }
+
+.cards { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+
+.card {
+  position: relative;
+  flex: 1 1 230px; max-width: 262px; min-height: 176px;
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  padding: 16px 14px 14px;
+  border-radius: 16px; cursor: pointer; font: inherit; color: #e8f0ff;
+  border: 2px solid rgba(140,190,255,.28);
+  background: linear-gradient(180deg, rgba(28,42,76,.92), rgba(12,18,36,.92));
+  transition: transform .12s cubic-bezier(.2,1.4,.4,1), border-color .12s, box-shadow .12s;
+  animation: cardin .3s cubic-bezier(.2,1.4,.4,1) backwards;
+}
+.card:nth-child(1) { animation-delay: .02s; }
+.card:nth-child(2) { animation-delay: .09s; }
+.card:nth-child(3) { animation-delay: .16s; }
+@keyframes cardin { from { opacity: 0; transform: translateY(18px) scale(.94); } }
+
+.card:hover, .card:focus-visible {
+  transform: translateY(-5px) scale(1.03);
+  border-color: #7CFFCB;
+  box-shadow: 0 14px 34px rgba(124,255,203,.22);
+  outline: none;
+}
+/* 強いカードほど派手に */
+.card.t2 { border-color: rgba(95,208,255,.45); }
+.card.t2:hover { border-color: #5fd0ff; box-shadow: 0 14px 34px rgba(95,208,255,.3); }
+.card.t3 {
+  border-color: rgba(255,230,109,.6);
+  background: linear-gradient(180deg, rgba(86,68,24,.95), rgba(40,30,12,.95));
+  box-shadow: 0 0 24px rgba(255,230,109,.14) inset;
+}
+.card.t3 .card-desc { color: #e6d7ad; }
+.card.t3 .card-name { color: #fff3c4; }
+.card.t3:hover { border-color: #ffe66d; box-shadow: 0 14px 38px rgba(255,230,109,.35); }
+.card.maxed { border-color: rgba(255,140,200,.55); }
+
+.card-key {
+  position: absolute; top: 8px; left: 10px;
+  width: 20px; height: 20px; border-radius: 6px;
+  font: 900 12px/20px "Arial Black", sans-serif; color: #04101f;
+  background: rgba(200,225,255,.75);
+}
+.card-icon { font-size: 40px; line-height: 1.1; filter: drop-shadow(0 3px 8px rgba(0,0,0,.5)); }
+.card-name { font: 900 17px/1.2 system-ui, sans-serif; letter-spacing: .02em; }
+.card-lv {
+  font: 900 11px/1 "Arial Black", sans-serif; letter-spacing: .08em;
+  color: #7CFFCB;
+  padding: 3px 9px; border-radius: 999px; background: rgba(124,255,203,.12);
+}
+.card.t3 .card-lv { color: #ffe66d; background: rgba(255,230,109,.14); }
+.card-desc { font-size: 12px; line-height: 1.6; color: #b6c8e4; }
+.card-pips { display: flex; gap: 3px; margin-top: auto; padding-top: 6px; }
+.card-pip { width: 13px; height: 4px; border-radius: 2px; background: rgba(255,255,255,.16); }
+.card-pip.on { background: #7CFFCB; }
+.card.t3 .card-pip.on { background: #ffe66d; }
+.card-pip.next { background: rgba(255,255,255,.5); animation: blink .8s steps(2, jump-none) infinite; }
+
+.lv-foot {
+  display: flex; gap: 14px; align-items: center; justify-content: center;
+  flex-wrap: wrap; margin-top: 16px;
+}
+.lv-hint { font-size: 11px; color: #7f9bc4; letter-spacing: .08em; }
+.lv-hint b { color: #cfe2ff; }
+#lv-reroll[disabled] { opacity: .35; cursor: not-allowed; }
+
+/* 取得済み強化の一覧 */
+.have {
+  display: flex; gap: 6px; justify-content: center; flex-wrap: wrap;
+  margin-top: 14px;
+}
+.have:empty { display: none; }
+.have-item {
+  display: flex; align-items: center; gap: 4px;
+  padding: 4px 9px; border-radius: 999px;
+  background: rgba(255,255,255,.06); border: 1px solid rgba(140,190,255,.18);
+  font-size: 12px; color: #cfe0f8;
+}
+.have-item .hi-icon { font-size: 14px; }
+.have-item .hi-lv { font: 900 11px "Arial Black", sans-serif; color: #7CFFCB; }
+
 /* ---------------- 右上ミニボタン ---------------- */
 #topright {
   position: fixed; z-index: 15; display: flex; gap: 6px;
@@ -241,6 +337,28 @@ canvas#game {
   .stats b { font-size: 16px; }
   .hint { margin-top: 10px; }
   .padbtn { width: 68px; height: 68px; font-size: 11px; }
+  .card { min-height: 0; padding: 10px 8px 8px; flex-basis: 30%; border-radius: 12px; }
+  .card-icon { font-size: 26px; }
+  .card-name { font-size: 13px; }
+  .card-desc { font-size: 10.5px; line-height: 1.45; }
+  .card-key { width: 16px; height: 16px; font-size: 10px; line-height: 16px; }
+  .cards { gap: 6px; }
+  .lv-title { font-size: 26px; }
+  .lv-sub, .lv-kicker { font-size: 10px; margin-bottom: 8px; }
+  .have-item { font-size: 10px; padding: 3px 6px; }
+}
+
+/* 画面が低いとき（横持ちスマホ）はレベルアップ画面を詰める */
+@media (max-height: 470px) {
+  #screen-levelup { padding: 6px 12px; }
+  #lv-have { display: none; }
+  .lv-kicker { font-size: 9px; letter-spacing: .25em; }
+  .lv-title { font-size: 22px; }
+  .lv-sub { margin-bottom: 6px; }
+  .lv-foot { margin-top: 8px; gap: 8px; }
+  .card { padding: 8px 7px 6px; }
+  .card-icon { font-size: 22px; }
+  .card-pips { padding-top: 4px; }
 }
 
 /* インストール済み（スタンドアロン起動）ではインストール導線を隠す */
