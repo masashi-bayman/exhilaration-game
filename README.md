@@ -167,6 +167,14 @@ js/upgrades.js    3択強化の定義とカードの抽選
 js/game.js        ゲームロジック（物理・当たり判定・スコア・状態遷移）
 js/render.js      Canvas 描画
 js/main.js        メインループ / 入力 / 画面遷移
+
+manifest.webmanifest / sw.js / icons/   PWA（インストールとオフライン再生）
+
+deploy/serve.py               .webmanifest を正しい MIME で返す静的サーバ
+deploy/install-on-pi.sh       ラズパイに systemd 登録して自動起動
+deploy/tailscale-setup.sh     Tailscale の HTTPS（*.ts.net）で公開
+deploy/nginx-exhilaration.conf / exhilaration.service
+.github/workflows/pages.yml   GitHub Pages への自動デプロイ
 ```
 
 外部依存ゼロ、ビルド不要、全部バニラ JS + Canvas 2D です。
@@ -183,7 +191,8 @@ App Store / Google Play への申請も、開発者登録も不要です。
 > **前提**: インストールできるのは **https:// で配信されている場合**（`localhost` は例外）。
 > GitHub Pages を使うのが一番早いです。ラズパイの `http://192.168.x.x` 直アクセスでも
 > **iPhone はホーム画面追加まで可能**ですが、Android のインストールとオフライン動作には
-> HTTPS が要ります（[ラズパイを HTTPS にする](#ラズパイを-https-にするpwa-をフルに使いたい場合)参照）。
+> HTTPS が要ります。Tailscale を使っているなら
+> [`*.ts.net` で HTTPS 公開](#-ラズパイで動かす)するのが一番ラクです。
 
 ## iPhone / iPad（Safari）
 
@@ -256,6 +265,17 @@ https://masashi-bayman.github.io/exhilaration-game/
 同じ Wi-Fi の中で、家族や友達のスマホからも遊べるようにします。Pi Zero 2 W でも十分動きます
 （描画はブラウザ側なので、ラズパイはファイルを配るだけ）。
 
+## 置き場所はどこでもいい
+
+`install-on-pi.sh` はスクリプト自身の位置からリポジトリの場所を割り出して
+systemd ユニットを書くので、**clone 先はどこでも構いません**（`~/exhilaration-game` でも
+`/opt/games/exhilaration` でも `/srv/...` でも動きます）。気をつけるのは3点だけ:
+
+- **起動ユーザが読めること** — スクリプトを実行したユーザでそのまま動きます
+- **起動時にマウントされている場所であること** — `/etc/fstab` に書いていない外付け USB に
+  置くと、再起動後にサービスが起動できません
+- **nginx を使う場合だけ** `www-data` が読める場所（`/var/www/...` が無難）
+
 ## 一番かんたん（Python の常駐サーバ）
 
 ```bash
@@ -299,18 +319,67 @@ sudo nginx -t && sudo systemctl reload nginx
 ラズパイの mDNS（avahi）が有効なら `http://raspberrypi.local:8080/` で届きます。
 `sudo raspi-config` でホスト名を `exhilaration` にすれば `http://exhilaration.local:8080/`。
 
-## ラズパイを HTTPS にする（PWA をフルに使いたい場合）
+## Tailscale の `*.ts.net` で HTTPS 公開する（おすすめ）
+
+すでに Tailscale を使っているなら、これが一番ラクで一番いい方法です。
+`https://<マシン名>.<tailnet名>.ts.net/` という**本物の証明書つき HTTPS** が手に入るので、
+Android の PWA インストールもオフライン再生もフルに効きますし、外出先からも遊べます。
+証明書の更新も Tailscale 任せです。
+
+### 1回だけ管理画面で設定
+
+[login.tailscale.com/admin/dns](https://login.tailscale.com/admin/dns) を開いて:
+
+- **MagicDNS** を有効化
+- **HTTPS Certificates** を **Enable**
+
+### ラズパイ側
+
+```bash
+cd ~/exhilaration-game
+bash deploy/install-on-pi.sh        # まだならゲームのサーバを常駐させる
+bash deploy/tailscale-setup.sh      # Tailscale の HTTPS を前に立てる
+```
+
+中でやっているのはこれだけです:
+
+```bash
+sudo tailscale serve --bg --https=443 http://localhost:8080
+```
+
+終わると遊べる URL が表示されます:
+
+```
+https://raspberrypi.tailXXXXXX.ts.net/
+```
+
+| やりたいこと | コマンド |
+|---|---|
+| 状態を見る | `tailscale serve status` |
+| 公開をやめる | `bash deploy/tailscale-setup.sh --off` |
+| ポートを変える | `PORT=9000 bash deploy/tailscale-setup.sh` |
+| 誰にでも見せる | `bash deploy/tailscale-setup.sh --funnel` |
+
+- `--bg` で入れているので、**ラズパイを再起動しても勝手に復帰**します
+- **tailnet 内限定**です。スマホ側にも Tailscale アプリを入れて同じアカウントで
+  ログインしてください。それだけで自宅でも外出先でも同じ URL で遊べます
+- Tailscale を入れていない人（友達など）にも見せたいときは `--funnel` を付けると
+  インターネットに公開されます（管理画面で Funnel の許可が必要）。
+  URL を知っていれば誰でも遊べる状態になる点だけ注意してください
+
+> **注意**: PWA のインストールは **URL（オリジン）ごと**に別物として扱われます。
+> 先に `http://192.168.x.x:8080` でホーム画面に追加していた場合、`ts.net` の URL で
+> 入れ直すと別アプリ扱いになり、**ベストスコアは引き継がれません**（`localStorage` が別）。
+> どの URL で遊ぶか決めてから入れるのがおすすめです。
+
+## その他の HTTPS 化の手段
 
 LAN の `http://` のままでも **遊べますし、iPhone ならホーム画面にも追加できます**。
-ただし Android のインストールと Service Worker（オフライン再生）には HTTPS が必要です。おすすめ順:
+Tailscale を使わない場合は:
 
-1. **Tailscale** — `sudo tailscale up`、`sudo tailscale cert <machine>.<tailnet>.ts.net` で
-   本物の証明書がもらえます。外出先からも繋がるのでこれが一番ラク
-2. **Cloudflare Tunnel** — `cloudflared tunnel` でドメイン付き HTTPS を無料で生やせます
+1. **Cloudflare Tunnel** — `cloudflared tunnel` でドメイン付き HTTPS を無料で生やせます
+2. **GitHub Pages** — ラズパイを使わず、そもそも HTTPS で配る（この README の上の方）
 3. **自己署名証明書** — スマホ側に証明書をインストールする必要があり、iOS はかなり面倒なので非推奨
-
-なお、一度どこかの HTTPS（GitHub Pages など）でホーム画面に追加してしまえば、
-**その後はオフラインで動く**ので、ラズパイは「LAN 内で気軽に開く用」と割り切るのも手です。
 
 ---
 
