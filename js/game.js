@@ -37,11 +37,25 @@
   function isWall(p) { return p.type === WALL; }
 
   var BURST_TIME = 6.5;
+  // 壊せない壁の間で往復し続けて戻ってこないのを防ぐ仕掛け。
+  // 「戻ってこない」＝パドルの高さまで降りてこない、で判定する。
+  // 皿に当たるか、パドルの高さまで降りてくれば 0 に戻る。
+  var STALL_SOFT = 3.0;    // これを超えたらパドルの方へ진行方向を寄せ始める
+  var STALL_HARD = 6.5;    // それでも駄目なら強制的にパドルの上へ戻す
+  var WALL_SCATTER = 0.20; // 壊せない壁で跳ねるたびに角度を散らす量（ラジアン）
   var LEVELUP_LEAD = 1.6;   // 経験値が満タンになってから、カードが出るまで
   var GUARD_WINDOW = 0.14;
   var GUARD_COOLDOWN = 0.45;
 
   function clamp(v, a, b) { return v < a ? a : (v > b ? b : v); }
+
+  /** 速さを保ったまま進行方向を少しだけずらす（完全な往復軌道を壊すため） */
+  function scatter(b, amount) {
+    var a = Math.atan2(b.vy, b.vx) + (Math.random() * 2 - 1) * amount;
+    var sp = Math.hypot(b.vx, b.vy) || b.speed;
+    b.vx = Math.cos(a) * sp;
+    b.vy = Math.sin(a) * sp;
+  }
   function rnd(a, b) { return a + Math.random() * (b - a); }
   function fmt(n) { return Math.floor(n).toLocaleString('en-US'); }
 
@@ -215,7 +229,7 @@
       x: G.paddle.x, y: PADDLE_Y - ballRadius() - 2,
       vx: 0, vy: 0, r: ballRadius(),
       speed: ballBaseSpeed(),
-      pierce: 0, charged: 0, stuck: true, trail: [], hue: 190, born: 0
+      pierce: 0, charged: 0, stuck: true, trail: [], hue: 190, born: 0, idle: 0
     }];
   }
 
@@ -262,7 +276,7 @@
     var b = {
       x: x, y: y, vx: Math.cos(a), vy: Math.sin(a), r: ballRadius(),
       speed: clamp(base * rnd(0.95, 1.15), 200, G.cfg.maxSpeed),
-      pierce: 0, charged: 0, stuck: false, trail: [], hue: hue == null ? rnd(0, 360) : hue, born: 0.12
+      pierce: 0, charged: 0, stuck: false, trail: [], hue: hue == null ? rnd(0, 360) : hue, born: 0.12, idle: 0
     };
     b.vx *= b.speed; b.vy *= b.speed;
     G.balls.push(b);
@@ -540,8 +554,9 @@
       updateBalls(sim);
     }
 
-    // コンボ減衰
-    if (G.comboTimer > 0) {
+    // コンボ減衰。ウェーブクリア中・発射待ち・ミス後の待機中は止める
+    // （プレイヤーが操作できない時間で繋ぎが切れるのは理不尽なので）
+    if (G.comboTimer > 0 && G.state === 'play') {
       G.comboTimer -= sim;
       if (G.comboTimer <= 0) {
         if (G.combo >= 15) FX.pop(W / 2, PADDLE_Y - 150, 'CHAIN END  x' + G.combo, '#88a', 20, -40);
@@ -646,18 +661,47 @@
     for (var i = G.balls.length - 1; i >= 0; i--) {
       var b = G.balls[i];
       if (b.born > 0) b.born -= dt;
-      if (b.stuck) { pushTrail(b); continue; }
+      if (b.stuck) { b.idle = 0; pushTrail(b); continue; }
       if (b.charged > 0) b.charged = Math.max(0, b.charged - dt);
 
       // 速度の正規化（角度が寝すぎるのを防ぐ）
+      // ただし詰まっているときは横move も許して、壁の隙間を探せるようにする
+      var stalling = (b.idle || 0) > STALL_SOFT;
       var sp = Math.hypot(b.vx, b.vy) || 1;
-      var minVy = b.speed * 0.32;
+      var minVy = b.speed * (stalling ? 0.10 : 0.32);
       if (Math.abs(b.vy) < minVy) {
         b.vy = (b.vy >= 0 ? 1 : -1) * minVy;
         b.vx = Math.sign(b.vx || 1) * Math.sqrt(Math.max(1, b.speed * b.speed - b.vy * b.vy));
       } else {
         b.vx = b.vx / sp * b.speed;
         b.vy = b.vy / sp * b.speed;
+      }
+
+      // --- 進行不能（壁の間で往復し続けている）の検出 ---
+      // 皿を割る・パドルに当たる、のどちらかが起きれば 0 に戻る
+      b.idle = (b.idle || 0) + dt;
+      if (stalling) {
+        // 進行方向をパドルの方へ少しずつ向け直す。
+        // 「下向きの速度を足す」だと上の最低縦速度の補正に打ち消されるので、
+        // 速さは変えずに角度だけ回す。
+        var cur = Math.atan2(b.vy, b.vx);
+        var want = Math.atan2(PADDLE_Y - b.y, G.paddle.x - b.x);
+        var diff = ((want - cur + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
+        var rate = 0.9 * Math.min(3.5, (b.idle - STALL_SOFT) / 1.2);   // rad/秒
+        var na = cur + clamp(diff, -1, 1) * rate * dt;
+        b.vx = Math.cos(na) * b.speed;
+        b.vy = Math.sin(na) * b.speed;
+      }
+      if (b.idle > STALL_HARD) {
+        b.x = clamp(G.paddle.x, b.r + 2, W - b.r - 2);
+        b.y = PADDLE_Y - b.r - 8;
+        var back = -Math.PI / 2 + rnd(-0.45, 0.45);
+        b.vx = Math.cos(back) * b.speed;
+        b.vy = Math.sin(back) * b.speed;
+        b.idle = 0;
+        FX.pop(b.x, b.y - 34, 'RETURN', '#9fe4ff', 20, -70);
+        FX.ring(b.x, b.y, 6, 110, '#9fe4ff', 0.45, 5);
+        Sfx.ui();
       }
 
       // 強化「皿レーダー」：上昇中のボールが皿へ寄っていく
@@ -742,6 +786,10 @@
     }
     if ((G.cfg.floorBounce || G.burst > 0) && b.y + b.r > H) { b.y = H - b.r; b.vy = -Math.abs(b.vy); }
 
+    // パドルの高さまで降りてきたら「ちゃんと戻ってきた」とみなす。
+    // （拾えたかどうかは関係ない。プレイヤーの手が届く位置に来たかどうか）
+    if (b.y + b.r >= PADDLE_Y) b.idle = 0;
+
     // パドル
     var pd = G.paddle;
     var px = pd.x - pd.w / 2, py = PADDLE_Y;
@@ -792,9 +840,14 @@
         Sfx.clink((b.x / W) * 2 - 1);
         FX.spark(b.x, b.y, 4, 210, null, 170);
         FX.shake(2);
+        // 壁はザラついている、という扱いにして毎回角度を散らす。
+        // これで「天井と壁の間を真上下に往復し続ける」状態が続かない。
+        // 戻ってこない時間が長いほど強く散らして、早く抜け出させる。
+        scatter(b, WALL_SCATTER * (1 + Math.min(2.5, (b.idle || 0))));
         return false;   // 入れ子ループなので break ではなく抜ける
       }
 
+      b.idle = 0;   // 皿に触れたので「進行中」
       var dmg = 1 + lv('power');
       if (p.hp > dmg && !pierce) {
         damagePlate(p, b, dmg);
@@ -817,10 +870,13 @@
     Sfx.wall(pan);
     FX.spark(b.x, b.y, 4, b.hue, null, 160);
     FX.shake(0.8);
+    // ごくわずかに角度を散らす。完全に同じ軌道を往復し続けるのを防ぐ。
+    scatter(b, (b.idle || 0) > 1.5 ? 0.06 : 0.015);
   }
 
   function hitPaddle(b, pan) {
     var pd = G.paddle;
+    b.idle = 0;   // パドルに返ってきたので「進行中」
     b.y = PADDLE_Y - b.r - 0.5;
 
     var off = clamp((b.x - pd.x) / (pd.w / 2), -1, 1);
