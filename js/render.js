@@ -7,7 +7,7 @@
   var W = Game.W, H = Game.H, HUD_H = Game.HUD_H;
   var PADDLE_Y = Game.PADDLE_Y, PADDLE_H = Game.PADDLE_H;
   var G = Game.G;
-  var clamp = Game.clamp, fmt = Game.fmt;
+  var clamp = Game.clamp, fmt = Game.fmtS, isWall = Game.isWall;
 
   function roundRect(ctx, x, y, w, h, r) {
     r = Math.min(r, w / 2, h / 2);
@@ -132,6 +132,48 @@
       ctx.save();
       ctx.globalAlpha = ease;
       ctx.translate(p.x, p.y + oy);
+
+      // 壊せない壁
+      if (isWall(p)) {
+        var wg = ctx.createLinearGradient(0, 0, 0, p.h);
+        wg.addColorStop(0, '#59627a');
+        wg.addColorStop(0.5, '#394154');
+        wg.addColorStop(1, '#232a3c');
+        ctx.fillStyle = wg;
+        roundRect(ctx, 0, 0, p.w, p.h, 4);
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(150,175,215,.55)';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        // ハッチングで「硬い」感じを出す
+        ctx.save();
+        ctx.beginPath();
+        roundRect(ctx, 0, 0, p.w, p.h, 4);
+        ctx.clip();
+        ctx.strokeStyle = 'rgba(180,200,235,.16)';
+        ctx.lineWidth = 3;
+        for (var hx = -p.h; hx < p.w; hx += 10) {
+          ctx.beginPath();
+          ctx.moveTo(hx, p.h);
+          ctx.lineTo(hx + p.h, 0);
+          ctx.stroke();
+        }
+        ctx.restore();
+        // 四隅のリベット
+        ctx.fillStyle = 'rgba(210,225,255,.55)';
+        [[5, 5], [p.w - 5, 5], [5, p.h - 5], [p.w - 5, p.h - 5]].forEach(function (q) {
+          ctx.beginPath(); ctx.arc(q[0], q[1], 1.9, 0, 6.2832); ctx.fill();
+        });
+        if (p.shine > 0) {
+          ctx.globalCompositeOperation = 'lighter';
+          ctx.globalAlpha = p.shine * 0.5;
+          ctx.fillStyle = '#aecbff';
+          roundRect(ctx, 0, 0, p.w, p.h, 4);
+          ctx.fill();
+        }
+        ctx.restore();
+        continue;
+      }
 
       var damaged = 1 - (p.hp - 1) / Math.max(1, p.maxhp);
       var lig, sat;
@@ -408,14 +450,14 @@
       for (var i = 0; i < G.lives; i++) {
         ctx.fillStyle = '#ff6b8b';
         ctx.beginPath();
-        ctx.arc(28 + i * 22, H - 22, 7, 0, 6.2832);
+        ctx.arc(28 + i * 22, H - 26, 7, 0, 6.2832);
         ctx.fill();
       }
     } else {
       ctx.textAlign = 'left';
       ctx.fillStyle = 'rgba(160,200,255,.55)';
       ctx.font = '700 12px system-ui, sans-serif';
-      ctx.fillText('∞ おきらくモード', 22, H - 22);
+      ctx.fillText('∞ おきらくモード', 22, H - 26);
     }
 
     // 安全ネットの残量
@@ -423,11 +465,11 @@
       ctx.textAlign = 'left';
       ctx.fillStyle = '#7CFFCB';
       ctx.font = '900 13px "Arial Black", sans-serif';
-      ctx.fillText('🕸 x' + G.safety, 22, H - 46);
+      ctx.fillText('🕸 x' + G.safety, 110, H - 26);
     }
 
     // ゲージ / BURST タイマー
-    var bw = 340, bx = W / 2 - bw / 2, by = H - 28, bh = 12;
+    var bw = 380, bx = W / 2 - bw / 2, by = H - 24, bh = 11;
     ctx.fillStyle = 'rgba(255,255,255,.10)';
     roundRect(ctx, bx, by, bw, bh, 6); ctx.fill();
 
@@ -442,7 +484,7 @@
       ctx.textAlign = 'center';
       ctx.fillStyle = '#fff';
       ctx.font = '900 13px "Arial Black", sans-serif';
-      ctx.fillText('B U R S T !   BALLS ' + G.balls.length, W / 2, by - 12);
+      ctx.fillText('B U R S T !   BALLS ' + G.balls.length, W / 2, by - 13);
     } else {
       var full = G.gauge >= 100;
       var col = full ? '#ffe66d' : '#5fd0ff';
@@ -456,7 +498,7 @@
       ctx.textAlign = 'center';
       ctx.fillStyle = full ? '#ffe66d' : 'rgba(160,200,255,.65)';
       ctx.font = '900 12px "Arial Black", sans-serif';
-      ctx.fillText(full ? (G.cfg.autoBurst ? 'BURST!' : 'PRESS  [E]  →  BURST') : 'BURST GAUGE', W / 2, by - 12);
+      ctx.fillText(full ? (G.cfg.autoBurst ? 'BURST!' : 'PRESS  [E]  →  BURST') : 'BURST GAUGE', W / 2, by - 13);
     }
 
     // コンボ（数値表示）
@@ -465,19 +507,74 @@
       var kk = clamp(G.comboTimer / (G.comboMax || 1), 0, 1);
       ctx.fillStyle = G.combo >= 20 ? '#ffe66d' : '#9fe4ff';
       ctx.font = '900 22px "Arial Black", sans-serif';
-      ctx.fillText(G.combo + ' COMBO', W - 22, H - 24);
+      ctx.fillText(G.combo + ' COMBO', W - 22, H - 28);
       ctx.fillStyle = 'rgba(255,255,255,.25)';
-      ctx.fillRect(W - 22 - 130, H - 10, 130, 3);
+      ctx.fillRect(W - 22 - 130, H - 12, 130, 3);
       ctx.fillStyle = G.combo >= 20 ? '#ffe66d' : '#9fe4ff';
-      ctx.fillRect(W - 22 - 130 * kk, H - 10, 130 * kk, 3);
+      ctx.fillRect(W - 22 - 130 * kk, H - 12, 130 * kk, 3);
     }
 
     // ボール数
     if (G.balls.length > 1) {
-      ctx.textAlign = 'right';
+      ctx.textAlign = 'left';
       ctx.fillStyle = 'rgba(160,200,255,.7)';
       ctx.font = '700 12px system-ui, sans-serif';
-      ctx.fillText('BALLS  ' + G.balls.length, W - 22, H - 48);
+      ctx.fillText('BALLS  ' + G.balls.length, 22, H - 48);
+    }
+    ctx.restore();
+  }
+
+  function drawLevelUpTelegraph(ctx) {
+    var ratio = clamp(G.xp / (G.xpNeed || 1), 0, 1);
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    // ① もうすぐレベルアップ（HUD のすぐ下に控えめに）
+    if (!G.levelUpArmed && G.pendingLevels <= 0 && ratio >= 0.78 &&
+        (G.state === 'play' || G.state === 'ready')) {
+      var a = 0.4 + 0.35 * Math.sin(G.elapsed * 7);
+      ctx.globalAlpha = a;
+      ctx.fillStyle = '#7CFFCB';
+      ctx.font = '900 15px "Arial Black", sans-serif';
+      ctx.fillText('▸ まもなく LEVEL UP ' + Math.round(ratio * 100) + '%', W / 2, HUD_H + 22);
+      ctx.globalAlpha = 1;
+    }
+
+    // ② 予告中：カードが出るまでのカウントダウン
+    if (G.levelUpArmed) {
+      var k = clamp(G.levelUpTimer / 1.5, 0, 1);
+      var y = HUD_H + 44;
+
+      // 帯
+      ctx.globalAlpha = 0.85;
+      var bg = ctx.createLinearGradient(0, y - 42, 0, y + 42);
+      bg.addColorStop(0, 'rgba(6,20,16,0)');
+      bg.addColorStop(0.5, 'rgba(10,40,32,.85)');
+      bg.addColorStop(1, 'rgba(6,20,16,0)');
+      ctx.fillStyle = bg;
+      ctx.fillRect(0, y - 42, W, 84);
+
+      ctx.globalAlpha = 1;
+      var pulse = 1 + 0.05 * Math.sin(G.elapsed * 20);
+      ctx.fillStyle = '#7CFFCB';
+      ctx.font = '900 ' + (38 * pulse).toFixed(0) + 'px "Arial Black", Impact, sans-serif';
+      ctx.lineWidth = 6;
+      ctx.strokeStyle = 'rgba(0,0,0,.5)';
+      ctx.strokeText('LEVEL UP!', W / 2, y - 6);
+      ctx.fillText('LEVEL UP!', W / 2, y - 6);
+
+      ctx.fillStyle = '#dff7ec';
+      ctx.font = '700 13px system-ui, sans-serif';
+      var more = G.pendingLevels > 1 ? '（' + G.pendingLevels + ' 回ぶん）' : '';
+      ctx.fillText('まもなく強化を選びます' + more, W / 2, y + 24);
+
+      // 残り時間のバー
+      var bw = 260;
+      ctx.fillStyle = 'rgba(255,255,255,.15)';
+      ctx.fillRect(W / 2 - bw / 2, y + 36, bw, 4);
+      ctx.fillStyle = '#7CFFCB';
+      ctx.fillRect(W / 2 - bw / 2, y + 36, bw * (1 - k), 4);
     }
     ctx.restore();
   }
@@ -489,18 +586,19 @@
       var a = 0.55 + 0.45 * Math.sin(G.elapsed * 6);
       ctx.globalAlpha = a;
       ctx.fillStyle = '#fff';
-      ctx.font = '900 22px "Arial Black", sans-serif';
-      ctx.fillText('SPACE / クリック で発射', W / 2, PADDLE_Y - 60);
+      ctx.font = '900 20px "Arial Black", sans-serif';
+      ctx.fillText('SPACE / クリック で発射', W / 2, PADDLE_Y - 36);
     }
     if (G.bannerTimer > 0) {
+      // 皿とパドルの間には必ず余白があるので、そこに出せば盤面と被らない
       var k = clamp(G.bannerTimer / 1.6, 0, 1);
       ctx.globalAlpha = Math.min(1, k * 2);
       ctx.fillStyle = '#fff';
-      ctx.font = '900 64px "Arial Black", Impact, sans-serif';
-      ctx.fillText(G.bannerText, W / 2, H * 0.36);
+      ctx.font = '900 46px "Arial Black", Impact, sans-serif';
+      ctx.fillText(G.bannerText, W / 2, PADDLE_Y - 112);
       ctx.fillStyle = '#9fe4ff';
-      ctx.font = '900 20px "Arial Black", sans-serif';
-      ctx.fillText(G.bannerSub, W / 2, H * 0.36 + 48);
+      ctx.font = '900 17px "Arial Black", sans-serif';
+      ctx.fillText(G.bannerSub, W / 2, PADDLE_Y - 76);
     }
     ctx.restore();
   }
@@ -543,6 +641,7 @@
     ctx.restore();
 
     drawVignette(ctx);
+    drawLevelUpTelegraph(ctx);
     drawHUD(ctx);
     drawBottomBar(ctx);
     drawPrompts(ctx);

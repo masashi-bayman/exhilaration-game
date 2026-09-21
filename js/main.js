@@ -38,8 +38,8 @@
   }
 
   function refreshTitleBests() {
-    document.getElementById('best-easy').textContent = Game.fmt(Game.loadBest('easy'));
-    document.getElementById('best-hard').textContent = Game.fmt(Game.loadBest('hard'));
+    document.getElementById('best-easy').textContent = Game.fmtS(Game.loadBest('easy'));
+    document.getElementById('best-hard').textContent = Game.fmtS(Game.loadBest('hard'));
   }
 
   function startMode(mode) {
@@ -122,7 +122,7 @@
   rerollBtn.addEventListener('click', function () { Game.rerollChoices(); });
 
   global.onGameOver = function () {
-    document.getElementById('over-score').textContent = Game.fmt(G.score);
+    document.getElementById('over-score').textContent = Game.fmtS(G.score);
     document.getElementById('over-level').textContent = G.level;
     document.getElementById('over-wave').textContent = G.wave;
     document.getElementById('over-combo').textContent = G.comboBest;
@@ -130,7 +130,7 @@
     document.getElementById('over-plates').textContent = G.totalSmashed;
     document.getElementById('over-perfect').textContent = G.perfectCount;
     document.getElementById('over-burst').textContent = G.burstUsed;
-    document.getElementById('over-best').textContent = Game.fmt(G.best);
+    document.getElementById('over-best').textContent = Game.fmtS(G.best);
     document.getElementById('over-newbest').style.display = G.newBest ? 'block' : 'none';
     document.getElementById('over-mode').textContent = G.cfg.label;
     renderHave(document.getElementById('over-have'));

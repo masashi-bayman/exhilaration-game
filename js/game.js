@@ -4,41 +4,59 @@
 (function (global) {
   'use strict';
 
-  var W = 960, H = 720;
+  var W = 1280, H = 720;   // 16:9。横長スマホにもぴったり収まる
 
   var HUD_H = 74;
   var PLATE_TOP = 150;
   var PLATE_W = 74, PLATE_H = 26, GAP_X = 6, GAP_Y = 9;
-  var PADDLE_Y = H - 58, PADDLE_H = 14;
+  var FLOOR_MARGIN = 150;   // 最下段の皿とパドルの間に必ず空ける余白
+  var PADDLE_Y = H - 72, PADDLE_H = 14;   // 下に HUD 帯を置くぶん少し上げる
   var BALL_R = 8;
 
   var MODES = {
     easy: {
       key: 'easy', label: 'おきらく', sub: '落ちない。ただひたすら割る。',
       lives: Infinity, floorBounce: true,
-      paddleW: 172, ballSpeed: 395, speedUp: 0.020, maxSpeed: 760,
+      paddleW: 208, ballSpeed: 428, speedUp: 0.021, maxSpeed: 840,
       gaugeRate: 1.75, autoBurst: true, guard: false,
       comboTime: 2.6, ballCap: 64, keepAfterBurst: 5, scoreScale: 1.0
     },
     hard: {
       key: 'hard', label: 'ガチ', sub: 'ジャストガードを決めろ。',
       lives: 3, floorBounce: false,
-      paddleW: 116, ballSpeed: 468, speedUp: 0.034, maxSpeed: 920,
+      paddleW: 138, ballSpeed: 512, speedUp: 0.036, maxSpeed: 1010,
       gaugeRate: 1.0, autoBurst: false, guard: true,
       comboTime: 1.9, ballCap: 44, keepAfterBurst: 3, scoreScale: 1.6
     }
   };
 
-  var PLATE_VALUE = { 1: 1, 2: 2.2, 3: 3.6, 4: 3.0 };
-  var PLATE_HP = { 1: 1, 2: 2, 3: 3, 4: 1 };
+  var PLATE_VALUE = { 1: 1, 2: 2.2, 3: 3.6, 4: 3.0, 5: 0 };
+  var PLATE_HP = { 1: 1, 2: 2, 3: 3, 4: 1, 5: 1 };
+  var WALL = 5;   // 壊せないブロック
+
+  function isWall(p) { return p.type === WALL; }
 
   var BURST_TIME = 6.5;
+  var LEVELUP_LEAD = 1.5;   // 「そろそろ来ます」から実際にカードが出るまで
   var GUARD_WINDOW = 0.14;
   var GUARD_COOLDOWN = 0.45;
 
   function clamp(v, a, b) { return v < a ? a : (v > b ? b : v); }
   function rnd(a, b) { return a + Math.random() * (b - a); }
   function fmt(n) { return Math.floor(n).toLocaleString('en-US'); }
+
+  // 桁が増えても HUD を圧迫しないよう、100万以上は SI 接頭辞に畳む
+  //   999,999 → "999,999" ／ 1,234,567 → "1.23M" ／ 10^33 → "1000Q"
+  var SI = ['', 'K', 'M', 'G', 'T', 'P', 'E', 'Z', 'Y', 'R', 'Q'];
+  function fmtS(n) {
+    n = Math.floor(n);
+    if (!isFinite(n)) return '∞';
+    if (n < 0) return '-' + fmtS(-n);
+    if (n < 1000000) return n.toLocaleString('en-US');
+    var i = 0, v = n;
+    while (v >= 1000 && i < SI.length - 1) { v /= 1000; i++; }
+    return v.toFixed(v < 10 ? 2 : (v < 100 ? 1 : 0)) + SI[i];
+  }
 
   var G = {
     W: W, H: H,
@@ -53,12 +71,13 @@
     gauge: 0, gaugeReadyPulse: 0,
     burst: 0, burstUsed: 0, burstScore: 0,
 
-    plates: [], remaining: 0, layoutName: '',
+    plates: [], remaining: 0, layoutName: '', plateTop: 150,
     balls: [], paddle: null,
 
     // --- レベルアップ（3択強化） ---
     level: 1, xp: 0, xpNeed: 6, pendingLevels: 0,
     upLv: {}, choices: [], rerolls: 0, resumeState: 'play',
+    levelUpArmed: false, levelUpTimer: 0,
     safety: 0, comboMax: 2.6, burstMax: 6.5,
 
     timeScale: 1, stateTimer: 0, elapsed: 0,
@@ -118,6 +137,7 @@
     G.hype = 0; G.newBest = false;
     G.level = 1; G.xp = 0; G.xpNeed = xpNeedFor(1); G.pendingLevels = 0;
     G.upLv = {}; G.choices = []; G.rerolls = 0; G.safety = 0;
+    G.levelUpArmed = false; G.levelUpTimer = 0;
     G.comboMax = G.cfg.comboTime; G.burstMax = BURST_TIME;
     G.paddle = { x: W / 2, w: G.cfg.paddleW, vx: 0, glow: 0, squash: 0 };
     FX.reset();
@@ -132,17 +152,27 @@
     G.plates = [];
     var totalW = L.cols * PLATE_W + (L.cols - 1) * GAP_X;
     var ox = (W - totalW) / 2;
+
+    // ウェーブが進むほど盤面が下がってくる（＝事故りやすくなる）。
+    // ただしパドルの上には必ず FLOOR_MARGIN を残すので、理不尽にはならない。
+    var gridH = L.rows * PLATE_H + (L.rows - 1) * GAP_Y;
+    var sink = Math.min(96, Math.floor(wave / 2) * 6);
+    var top = Math.min(PLATE_TOP + sink, PADDLE_Y - FLOOR_MARGIN - gridH);
+    top = Math.max(HUD_H + 34, top);
+    G.plateTop = top;
+
     for (var r = 0; r < L.rows; r++) {
       for (var c = 0; c < L.cols; c++) {
         var t = L.grid[r][c];
         if (!t) continue;
         G.plates.push({
           x: ox + c * (PLATE_W + GAP_X),
-          y: PLATE_TOP + r * (PLATE_H + GAP_Y),
+          y: top + r * (PLATE_H + GAP_Y),
           w: PLATE_W, h: PLATE_H,
           type: t, hp: PLATE_HP[t], maxhp: PLATE_HP[t],
           alive: true, row: r, col: c,
-          hue: t === 4 ? 45 : (t === 3 ? 205 : (t === 2 ? 22 : 172 + r * 21)),
+          hue: t === WALL ? 220 : (t === 4 ? 45 : (t === 3 ? 205 : (t === 2 ? 22 :
+                172 + r * (150 / Math.max(1, L.rows - 1))))),
           shine: 0, drop: -rnd(0.05, 0.45)   // 登場アニメ用
         });
       }
@@ -150,13 +180,14 @@
     // 強化「爆発皿の増設」
     var extraBombs = 2 * lv('bomb');
     for (var e = 0; e < extraBombs; e++) {
-      var cands = G.plates.filter(function (q) { return q.type !== 4; });
+      var cands = G.plates.filter(function (q) { return q.type !== 4 && !isWall(q); });
       if (!cands.length) break;
       var pick = cands[(Math.random() * cands.length) | 0];
       pick.type = 4; pick.hp = 1; pick.maxhp = 1; pick.hue = 45;
     }
 
-    G.remaining = G.plates.length;
+    G.remaining = 0;
+    for (var m = 0; m < G.plates.length; m++) if (!isWall(G.plates[m])) G.remaining++;
     G.waveMul = Math.pow(1.28, wave - 1);
     G.safety = lv('safety');   // 安全ネットはウェーブごとに回復
   }
@@ -278,7 +309,7 @@
     if (G.burst <= 0 || Math.random() < 0.22) {
       var popCol = G.burst > 0 ? 'hsl(' + ((G.elapsed * 400 + c.x) % 360) + ',100%,70%)'
                                : (G.combo >= 10 ? '#ffe66d' : '#ffffff');
-      FX.pop(c.x, c.y, '+' + fmt(gain), popCol,
+      FX.pop(c.x, c.y, '+' + fmtS(gain), popCol,
              (G.burst > 0 ? 13 : 15) + Math.min(20, G.combo * 0.65));
     }
 
@@ -325,7 +356,7 @@
     var best = null, bd = range * range;
     for (var i = 0; i < G.plates.length; i++) {
       var q = G.plates[i];
-      if (!q.alive || q === except || q.drop < 0.4) continue;
+      if (!q.alive || q === except || q.drop < 0.4 || isWall(q)) continue;
       var c = plateCenter(q);
       var dx = c.x - x, dy = c.y - y;
       var d = dx * dx + dy * dy;
@@ -348,7 +379,7 @@
     if (depth > 3) return;
     for (var i = 0; i < G.plates.length; i++) {
       var q = G.plates[i];
-      if (!q.alive) continue;
+      if (!q.alive || isWall(q)) continue;
       var c = plateCenter(q);
       var dx = c.x - x, dy = c.y - y;
       if (dx * dx + dy * dy <= R * R) {
@@ -390,7 +421,7 @@
     Sfx.burstEnd();
     FX.flash(0.3, '160,200,255');
     FX.pop(W / 2, H * 0.42, 'BURST TOTAL', '#fff', 26, -30);
-    FX.pop(W / 2, H * 0.42 + 44, '+' + fmt(G.burstScore), '#ffe66d', 50, -20);
+    FX.pop(W / 2, H * 0.42 + 44, '+' + fmtS(G.burstScore), '#ffe66d', 50, -20);
     var keep = G.cfg.keepAfterBurst;
     // 余ったボールはスコアに変換して消える（後片付けも気持ちよく）
     while (G.balls.length > keep) {
@@ -398,7 +429,7 @@
       var bonus = Math.round(2500 * G.waveMul * scoreMul());
       G.score += bonus;
       FX.spark(b.x, b.y, 10, b.hue);
-      FX.pop(b.x, b.y, '+' + fmt(bonus), '#9ad', 16);
+      FX.pop(b.x, b.y, '+' + fmtS(bonus), '#9ad', 16);
     }
     for (var i = 0; i < G.balls.length; i++) G.balls[i].stuck = false;
   }
@@ -439,7 +470,7 @@
     FX.buzz([0, 16, 22, 45]);
     FX.streak(b.x, b.y - 60, Math.PI / 2, 260, '#fff6c0');
     FX.pop(b.x, b.y - 40, 'JUST GUARD!', '#ffe66d', 34, -80);
-    FX.pop(b.x, b.y - 8, '+' + fmt(bonus), '#fff', 20, -50);
+    FX.pop(b.x, b.y - 8, '+' + fmtS(bonus), '#fff', 20, -50);
     G.paddle.glow = 1;
   }
 
@@ -464,6 +495,7 @@
       }
     }
     if (G.state === 'waveclear' || G.state === 'dead') target = 0.45;
+    if (G.levelUpArmed) target = Math.min(target, 0.42);   // 予告中はゆっくりに
     G.timeScale += (target - G.timeScale) * Math.min(1, dt * 9);
 
     sim *= G.timeScale;
@@ -548,9 +580,24 @@
       G.xpNeed = xpNeedFor(G.level);
       G.pendingLevels++;
     }
-    // BURST 中は水を差さない。終わってからまとめて選ばせる
-    if (G.pendingLevels > 0 && G.burst <= 0 &&
-        (G.state === 'play' || G.state === 'ready')) openLevelUp();
+
+    // いきなり画面を止めると操作感を失うので、まず予告を出してから開く。
+    // BURST 中は水を差さないので、終わってからまとめて選ばせる。
+    var canOpen = (G.state === 'play' || G.state === 'ready') && G.burst <= 0;
+    if (G.pendingLevels > 0 && canOpen && !G.levelUpArmed) {
+      G.levelUpArmed = true;
+      G.levelUpTimer = LEVELUP_LEAD;
+      Sfx.ding();
+      FX.ring(W / 2, HUD_H + 40, 10, 260, '#7CFFCB', 0.6, 5);
+    }
+    if (G.levelUpArmed) {
+      if (canOpen) G.levelUpTimer -= dt;
+      if (G.levelUpTimer <= 0 && canOpen) {
+        G.levelUpArmed = false;
+        G.levelUpTimer = 0;
+        openLevelUp();
+      }
+    }
   }
 
   function updatePaddle(dt, input) {
@@ -692,8 +739,9 @@
       var dx = b.x - cx, dy = b.y - cy;
       if (dx * dx + dy * dy > b.r * b.r) continue;
 
-      var hasPierce = b.pierce > 0;
-      var luckyPierce = !hasPierce && lv('pierce') > 0 &&
+      var wall = isWall(p);
+      var hasPierce = !wall && b.pierce > 0;
+      var luckyPierce = !wall && !hasPierce && lv('pierce') > 0 &&
                         Math.random() < 0.14 * lv('pierce');
       var pierce = hasPierce || luckyPierce;
       if (!pierce) {
@@ -706,6 +754,14 @@
           b.vy = -b.vy;
           b.y += (b.y < p.y + p.h / 2 ? -oy : oy);
         }
+      }
+
+      if (wall) {
+        p.shine = 1;
+        Sfx.clink((b.x / W) * 2 - 1);
+        FX.spark(b.x, b.y, 4, 210, null, 170);
+        FX.shake(2);
+        break;
       }
 
       var dmg = 1 + lv('power');
@@ -817,7 +873,7 @@
     FX.ring(W / 2, H / 2, 30, 820, '#8ef', 0.7, 12);
     FX.buzz([0, 30, 45, 60]);
     FX.pop(W / 2, H / 2 - 60, 'WAVE ' + G.wave + ' CLEAR!', '#fff', 52, -20);
-    FX.pop(W / 2, H / 2 + 10, 'BONUS +' + fmt(bonus), '#ffe66d', 30, -30);
+    FX.pop(W / 2, H / 2 + 10, 'BONUS +' + fmtS(bonus), '#ffe66d', 30, -30);
     for (var i = 0; i < 60; i++) {
       FX.spark(rnd(0, W), rnd(HUD_H, H), 1, rnd(0, 360), null, 420);
     }
@@ -882,7 +938,7 @@
       case 'bonus': {
         var bo = Math.round(50000 * G.waveMul * scoreMul());
         G.score += bo;
-        FX.pop(W / 2, H * 0.5, '+' + fmt(bo), '#ffe66d', 46, -30);
+        FX.pop(W / 2, H * 0.5, '+' + fmtS(bo), '#ffe66d', 46, -30);
         break;
       }
     }
@@ -939,6 +995,7 @@
     start: start, update: update, launch: launch,
     pressGuard: pressGuard, triggerBurst: triggerBurst,
     pickUpgrade: pickUpgrade, rerollChoices: rerollChoices,
-    loadBest: loadBest, quitToTitle: quitToTitle, fmt: fmt, clamp: clamp
+    loadBest: loadBest, quitToTitle: quitToTitle,
+    fmt: fmt, fmtS: fmtS, clamp: clamp, isWall: isWall, WALL: WALL
   };
 })(window);
