@@ -199,6 +199,14 @@
       tone({ freq: 380, to: 70, type: 'sawtooth', dur: 0.5, gain: 0.16 });
     },
 
+    /* レベルアップ予告（経験値が満タンになった合図） */
+    levelWarn: function () {
+      tone({ freq: midi(24), type: 'triangle', dur: 0.28, gain: 0.14 });
+      tone({ freq: midi(31), type: 'triangle', dur: 0.32, gain: 0.12, delay: 0.09 });
+      tone({ freq: midi(36), type: 'sine', dur: 0.5, gain: 0.12, delay: 0.18 });
+      noise({ freq: 1200, to: 7000, dur: 0.3, gain: 0.05, q: 0.6 });
+    },
+
     /* レベルアップ（3択が出るとき） */
     levelUp: function () {
       [0, 7, 12, 16, 19].forEach(function (sv, i) {

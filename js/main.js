@@ -117,7 +117,7 @@
     showScreen('levelup');
   };
 
-  global.onLevelUpClose = function () { showScreen(null); };
+  global.onLevelUpClose = function () { showScreen(null); requestLock(); };
 
   rerollBtn.addEventListener('click', function () { Game.rerollChoices(); });
 
@@ -141,6 +141,7 @@
     if (G.state === 'paused') {
       G.state = pausedFrom;
       showScreen(null);
+      requestLock();
     } else if (['ready', 'play', 'waveclear', 'dead'].indexOf(G.state) >= 0) {
       pausedFrom = G.state;
       G.state = 'paused';
@@ -155,6 +156,38 @@
     showScreen('title');
   }
 
+  /* ---------- ポインタロック ----------
+     弾が動いている間（state === 'play'）はカーソルを画面内に閉じ込める。
+     ポーズ中・強化の3択中・発射待ちなど、弾が止まっているときは解放する。 */
+  var pointerLocked = false;
+  var canLock = !isTouch && !!canvas.requestPointerLock;
+
+  function requestLock() {
+    if (!canLock || pointerLocked) return;
+    if (G.state !== 'play') return;
+    try {
+      var pr = canvas.requestPointerLock();
+      if (pr && pr.catch) pr.catch(function () {});   // 連打などで弾かれても無視
+    } catch (e) {}
+  }
+  function releaseLock() {
+    if (!pointerLocked) return;
+    try { document.exitPointerLock(); } catch (e) {}
+  }
+  document.addEventListener('pointerlockchange', function () {
+    pointerLocked = (document.pointerLockElement === canvas);
+  });
+  document.addEventListener('pointerlockerror', function () { pointerLocked = false; });
+
+  // ロック中は絶対座標が来ないので、移動量を積算する
+  document.addEventListener('mousemove', function (e) {
+    if (!pointerLocked) return;
+    var r = canvas.getBoundingClientRect();
+    var scale = r.width ? Game.W / r.width : 1;
+    input.pointerActive = true;
+    input.pointerX = Game.clamp(input.pointerX + e.movementX * scale, 0, Game.W);
+  });
+
   /* ---------- 入力 ---------- */
   function canvasX(clientX) {
     var r = canvas.getBoundingClientRect();
@@ -162,6 +195,7 @@
   }
 
   canvas.addEventListener('mousemove', function (e) {
+    if (pointerLocked) return;   // ロック中は document 側で処理する
     input.pointerActive = true;
     input.pointerX = canvasX(e.clientX);
   });
@@ -171,6 +205,7 @@
     Sfx.init();
     if (e.button === 2) { Game.pressGuard(); e.preventDefault(); return; }
     if (G.state === 'ready') Game.launch();
+    requestLock();   // クリックはユーザー操作なのでロックを掛けられる
   });
   canvas.addEventListener('contextmenu', function (e) { e.preventDefault(); });
 
@@ -209,7 +244,7 @@
       Sfx.init();
       if (G.state === 'title') startMode('easy');
       else if (G.state === 'gameover') startMode(G.mode);
-      else if (G.state === 'ready') Game.launch();
+      else if (G.state === 'ready') { Game.launch(); requestLock(); }
     }
     if (c === 'ShiftLeft' || c === 'ShiftRight' || c === 'KeyJ') Game.pressGuard();
     if (c === 'KeyE' || c === 'KeyF' || c === 'KeyK') Game.triggerBurst();
@@ -326,6 +361,7 @@
     else { G.elapsed += dt; FX.update(dt); }
     Renderer.render(ctx);
     syncTouchPad();
+    if (pointerLocked && G.state !== 'play') releaseLock();
     requestAnimationFrame(frame);
   }
 

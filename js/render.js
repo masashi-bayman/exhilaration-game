@@ -120,7 +120,133 @@
     }
   }
 
-  /* ---------- 皿 ---------- */
+  /* ---------- 皿 ----------
+     皿は何百枚も並ぶので、見た目ごとに1枚だけオフスクリーンに描いて
+     あとは drawImage で貼る。毎フレーム grad を作り直すと一気に重くなる。 */
+  var SPRITE_PAD = 4;
+  var plateSprites = {};
+  var spriteWave = -1;
+
+  function plateKey(p) {
+    return p.type + '|' + (p.hue | 0) + '|' + p.hp + '|' + p.maxhp +
+           '|' + (p.w * 2 | 0) + '|' + (p.h * 2 | 0);
+  }
+
+  /** 静的な見た目だけを描く（脈動や被弾フラッシュは本体側で毎フレーム描く） */
+  function paintPlate(ctx, p) {
+    var rad = Math.max(2, Math.min(7, p.h * 0.28));
+    var inset = Math.max(1.5, p.h * 0.14);
+
+    // 壊せない壁
+    if (isWall(p)) {
+      var wg = ctx.createLinearGradient(0, 0, 0, p.h);
+      wg.addColorStop(0, '#59627a');
+      wg.addColorStop(0.5, '#394154');
+      wg.addColorStop(1, '#232a3c');
+      ctx.fillStyle = wg;
+      roundRect(ctx, 0, 0, p.w, p.h, rad * 0.6);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(150,175,215,.55)';
+      ctx.lineWidth = Math.max(1, p.h * 0.075);
+      ctx.stroke();
+      // ハッチングで「硬い」感じを出す
+      ctx.save();
+      ctx.beginPath();
+      roundRect(ctx, 0, 0, p.w, p.h, rad * 0.6);
+      ctx.clip();
+      ctx.strokeStyle = 'rgba(180,200,235,.16)';
+      ctx.lineWidth = Math.max(1.5, p.h * 0.11);
+      for (var hx = -p.h; hx < p.w; hx += Math.max(6, p.h * 0.4)) {
+        ctx.beginPath();
+        ctx.moveTo(hx, p.h);
+        ctx.lineTo(hx + p.h, 0);
+        ctx.stroke();
+      }
+      ctx.restore();
+      // 四隅のリベット
+      if (p.h >= 15) {
+        var rv = Math.max(3, p.h * 0.19);
+        ctx.fillStyle = 'rgba(210,225,255,.55)';
+        [[rv, rv], [p.w - rv, rv], [rv, p.h - rv], [p.w - rv, p.h - rv]].forEach(function (q) {
+          ctx.beginPath(); ctx.arc(q[0], q[1], Math.max(1.2, p.h * 0.07), 0, 6.2832); ctx.fill();
+        });
+      }
+      return;
+    }
+
+    var lig, sat;
+    if (p.type === 3) { sat = 12; lig = 62 - (p.maxhp - p.hp) * 12; }
+    else if (p.type === 4) { sat = 100; lig = 60; }
+    else if (p.type === 2) { sat = 78; lig = 58 - (p.maxhp - p.hp) * 12; }
+    else { sat = 70; lig = 62; }
+
+    // 本体
+    var grad = ctx.createLinearGradient(0, 0, 0, p.h);
+    grad.addColorStop(0, 'hsl(' + p.hue + ',' + sat + '%,' + (lig + 14) + '%)');
+    grad.addColorStop(1, 'hsl(' + p.hue + ',' + sat + '%,' + (lig - 14) + '%)');
+    ctx.fillStyle = grad;
+    roundRect(ctx, 0, 0, p.w, p.h, rad);
+    ctx.fill();
+
+    // 皿のフチ（内側の楕円）
+    ctx.strokeStyle = 'hsla(' + p.hue + ',' + sat + '%,' + (lig + 26) + '%,.85)';
+    ctx.lineWidth = Math.max(1, p.h * 0.077);
+    ctx.beginPath();
+    ctx.ellipse(p.w / 2, p.h / 2, p.w * 0.34, p.h * 0.28, 0, 0, 6.2832);
+    ctx.stroke();
+
+    // ハイライト
+    ctx.fillStyle = 'rgba(255,255,255,.20)';
+    roundRect(ctx, inset, inset * 0.7, p.w - inset * 2, p.h * 0.34, rad * 0.7);
+    ctx.fill();
+
+    // ヒビ
+    if (p.hp < p.maxhp) {
+      ctx.strokeStyle = 'rgba(0,0,0,.45)';
+      ctx.lineWidth = Math.max(1, p.h * 0.062);
+      ctx.beginPath();
+      var n = (p.maxhp - p.hp) * 2 + 1;
+      for (var k = 0; k < n; k++) {
+        var sx = (p.w / (n + 1)) * (k + 1);
+        ctx.moveTo(sx - p.h * 0.23, 2);
+        ctx.lineTo(sx + p.h * 0.12, p.h / 2);
+        ctx.lineTo(sx - p.h * 0.15, p.h - 2);
+      }
+      ctx.stroke();
+    }
+
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    // 爆発皿マーク
+    if (p.type === 4) {
+      ctx.fillStyle = 'rgba(80,40,0,.85)';
+      ctx.font = '900 ' + Math.max(8, p.h * 0.6).toFixed(0) + 'px sans-serif';
+      ctx.fillText('✸', p.w / 2, p.h / 2 + 1);
+    }
+    // 鉄皿マーク
+    if (p.type === 3) {
+      ctx.fillStyle = 'rgba(255,255,255,.5)';
+      ctx.font = '900 ' + Math.max(7, p.h * 0.45).toFixed(0) + 'px sans-serif';
+      ctx.fillText(p.hp + '', p.w / 2, p.h / 2 + 1);
+    }
+  }
+
+  function plateSprite(p) {
+    // ウェーブが変わるとセルの大きさも色も変わるので作り直す
+    if (spriteWave !== G.wave) { plateSprites = {}; spriteWave = G.wave; }
+    var key = plateKey(p);
+    var cv = plateSprites[key];
+    if (cv) return cv;
+    cv = document.createElement('canvas');
+    cv.width = Math.ceil(p.w) + SPRITE_PAD * 2;
+    cv.height = Math.ceil(p.h) + SPRITE_PAD * 2;
+    var c = cv.getContext('2d');
+    c.translate(SPRITE_PAD, SPRITE_PAD);
+    paintPlate(c, p);
+    plateSprites[key] = cv;
+    return cv;
+  }
+
   function drawPlates(ctx) {
     for (var i = 0; i < G.plates.length; i++) {
       var p = G.plates[i];
@@ -129,127 +255,35 @@
       if (d <= 0) continue;
       var ease = 1 - Math.pow(1 - d, 3);
       var oy = (1 - ease) * -40;
-      ctx.save();
+      var x = p.x - SPRITE_PAD, y = p.y + oy - SPRITE_PAD;
+
       ctx.globalAlpha = ease;
-      ctx.translate(p.x, p.y + oy);
+      ctx.drawImage(plateSprite(p), x, y);
 
-      // 壊せない壁
-      if (isWall(p)) {
-        var wg = ctx.createLinearGradient(0, 0, 0, p.h);
-        wg.addColorStop(0, '#59627a');
-        wg.addColorStop(0.5, '#394154');
-        wg.addColorStop(1, '#232a3c');
-        ctx.fillStyle = wg;
-        roundRect(ctx, 0, 0, p.w, p.h, 4);
-        ctx.fill();
-        ctx.strokeStyle = 'rgba(150,175,215,.55)';
-        ctx.lineWidth = 2;
-        ctx.stroke();
-        // ハッチングで「硬い」感じを出す
-        ctx.save();
-        ctx.beginPath();
-        roundRect(ctx, 0, 0, p.w, p.h, 4);
-        ctx.clip();
-        ctx.strokeStyle = 'rgba(180,200,235,.16)';
-        ctx.lineWidth = 3;
-        for (var hx = -p.h; hx < p.w; hx += 10) {
-          ctx.beginPath();
-          ctx.moveTo(hx, p.h);
-          ctx.lineTo(hx + p.h, 0);
-          ctx.stroke();
-        }
-        ctx.restore();
-        // 四隅のリベット
-        ctx.fillStyle = 'rgba(210,225,255,.55)';
-        [[5, 5], [p.w - 5, 5], [5, p.h - 5], [p.w - 5, p.h - 5]].forEach(function (q) {
-          ctx.beginPath(); ctx.arc(q[0], q[1], 1.9, 0, 6.2832); ctx.fill();
-        });
-        if (p.shine > 0) {
-          ctx.globalCompositeOperation = 'lighter';
-          ctx.globalAlpha = p.shine * 0.5;
-          ctx.fillStyle = '#aecbff';
-          roundRect(ctx, 0, 0, p.w, p.h, 4);
-          ctx.fill();
-        }
-        ctx.restore();
-        continue;
-      }
-
-      var damaged = 1 - (p.hp - 1) / Math.max(1, p.maxhp);
-      var lig, sat;
-      if (p.type === 3) { sat = 12; lig = 62 - (p.maxhp - p.hp) * 12; }
-      else if (p.type === 4) {
-        sat = 100; lig = 58 + Math.sin(G.elapsed * 8 + p.col) * 10;
-      } else if (p.type === 2) { sat = 78; lig = 58 - (p.maxhp - p.hp) * 12; }
-      else { sat = 70; lig = 62; }
-
-      // 本体
-      var grad = ctx.createLinearGradient(0, 0, 0, p.h);
-      grad.addColorStop(0, 'hsl(' + p.hue + ',' + sat + '%,' + (lig + 14) + '%)');
-      grad.addColorStop(1, 'hsl(' + p.hue + ',' + sat + '%,' + (lig - 14) + '%)');
-      ctx.fillStyle = grad;
-      roundRect(ctx, 0, 0, p.w, p.h, 7);
-      ctx.fill();
-
-      // 皿のフチ（内側の楕円）
-      ctx.strokeStyle = 'hsla(' + p.hue + ',' + sat + '%,' + (lig + 26) + '%,.85)';
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.ellipse(p.w / 2, p.h / 2, p.w * 0.34, p.h * 0.28, 0, 0, 6.2832);
-      ctx.stroke();
-
-      // ハイライト
-      ctx.fillStyle = 'rgba(255,255,255,.20)';
-      roundRect(ctx, 4, 3, p.w - 8, p.h * 0.34, 5);
-      ctx.fill();
-
-      // ヒビ
-      if (p.hp < p.maxhp) {
-        ctx.strokeStyle = 'rgba(0,0,0,.45)';
-        ctx.lineWidth = 1.6;
-        ctx.beginPath();
-        var n = (p.maxhp - p.hp) * 2 + 1;
-        for (var k = 0; k < n; k++) {
-          var sx = (p.w / (n + 1)) * (k + 1);
-          ctx.moveTo(sx - 6, 2);
-          ctx.lineTo(sx + 3, p.h / 2);
-          ctx.lineTo(sx - 4, p.h - 2);
-        }
-        ctx.stroke();
-      }
-
-      // 爆発皿マーク
+      // ここから下は時間で変わるので都度描く
+      var rad = Math.max(2, Math.min(7, p.h * 0.28));
       if (p.type === 4) {
-        ctx.fillStyle = 'rgba(80,40,0,.85)';
-        ctx.font = '900 15px sans-serif';
-        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-        ctx.fillText('✸', p.w / 2, p.h / 2 + 1);
         ctx.save();
         ctx.globalCompositeOperation = 'lighter';
-        ctx.globalAlpha = 0.35 + 0.25 * Math.sin(G.elapsed * 7 + p.col);
+        ctx.globalAlpha = ease * (0.35 + 0.25 * Math.sin(G.elapsed * 7 + p.col));
         ctx.fillStyle = '#ffcc55';
-        roundRect(ctx, -2, -2, p.w + 4, p.h + 4, 9);
+        ctx.translate(p.x, p.y + oy);
+        roundRect(ctx, -2, -2, p.w + 4, p.h + 4, rad + 2);
         ctx.fill();
         ctx.restore();
       }
-      // 鉄皿マーク
-      if (p.type === 3) {
-        ctx.fillStyle = 'rgba(255,255,255,.5)';
-        ctx.font = '900 11px sans-serif';
-        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-        ctx.fillText(p.hp + '', p.w / 2, p.h / 2 + 1);
-      }
-
-      // 被弾フラッシュ
       if (p.shine > 0) {
+        ctx.save();
         ctx.globalCompositeOperation = 'lighter';
-        ctx.globalAlpha = p.shine * 0.8;
-        ctx.fillStyle = '#fff';
-        roundRect(ctx, 0, 0, p.w, p.h, 7);
+        ctx.globalAlpha = p.shine * (isWall(p) ? 0.5 : 0.8);
+        ctx.fillStyle = isWall(p) ? '#aecbff' : '#fff';
+        ctx.translate(p.x, p.y + oy);
+        roundRect(ctx, 0, 0, p.w, p.h, isWall(p) ? rad * 0.6 : rad);
         ctx.fill();
+        ctx.restore();
       }
-      ctx.restore();
     }
+    ctx.globalAlpha = 1;
   }
 
   /* ---------- ボール ---------- */
@@ -435,7 +469,8 @@
     ctx.fillText(G.wave + '', W / 2, 43);
     ctx.fillStyle = 'rgba(150,180,220,.6)';
     ctx.font = '700 11px system-ui, sans-serif';
-    ctx.fillText(G.cfg.label + '  /  x' + G.waveMul.toFixed(2) + '  /  ' + G.layoutName, W / 2, 63);
+    ctx.fillText(G.cfg.label + '  /  x' + (G.waveMul < 1000 ? G.waveMul.toFixed(2) : fmt(G.waveMul)) +
+                 '  /  ' + G.layoutName, W / 2, 63);
 
     ctx.restore();
   }
@@ -524,58 +559,61 @@
     ctx.restore();
   }
 
+  // 経験値が満タンになってから、カードが出るまでの予告。
+  // （2回目以降が連続で来るときは予告なしで即カードが出る）
   function drawLevelUpTelegraph(ctx) {
-    var ratio = clamp(G.xp / (G.xpNeed || 1), 0, 1);
+    if (!G.levelUpArmed) return;
+
+    var lead = Game.LEVELUP_LEAD || 1.6;
+    var k = clamp(G.levelUpTimer / lead, 0, 1);   // 1 → 0
+    var appear = Math.min(1, (1 - k) * 6);        // 出てくるときの気持ちいい伸び
+    var y = HUD_H + 56;
+
     ctx.save();
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
 
-    // ① もうすぐレベルアップ（HUD のすぐ下に控えめに）
-    if (!G.levelUpArmed && G.pendingLevels <= 0 && ratio >= 0.78 &&
-        (G.state === 'play' || G.state === 'ready')) {
-      var a = 0.4 + 0.35 * Math.sin(G.elapsed * 7);
-      ctx.globalAlpha = a;
-      ctx.fillStyle = '#7CFFCB';
-      ctx.font = '900 15px "Arial Black", sans-serif';
-      ctx.fillText('▸ まもなく LEVEL UP ' + Math.round(ratio * 100) + '%', W / 2, HUD_H + 22);
-      ctx.globalAlpha = 1;
-    }
+    // 帯
+    ctx.globalAlpha = 0.92 * appear;
+    var bg = ctx.createLinearGradient(0, y - 56, 0, y + 56);
+    bg.addColorStop(0, 'rgba(8,26,20,0)');
+    bg.addColorStop(0.5, 'rgba(12,52,40,.92)');
+    bg.addColorStop(1, 'rgba(8,26,20,0)');
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, y - 56, W, 112);
 
-    // ② 予告中：カードが出るまでのカウントダウン
-    if (G.levelUpArmed) {
-      var k = clamp(G.levelUpTimer / 1.5, 0, 1);
-      var y = HUD_H + 44;
+    // 上下の走る線
+    ctx.globalAlpha = appear;
+    ctx.fillStyle = '#7CFFCB';
+    ctx.fillRect(0, y - 54, W, 2);
+    ctx.fillRect(0, y + 52, W, 2);
 
-      // 帯
-      ctx.globalAlpha = 0.85;
-      var bg = ctx.createLinearGradient(0, y - 42, 0, y + 42);
-      bg.addColorStop(0, 'rgba(6,20,16,0)');
-      bg.addColorStop(0.5, 'rgba(10,40,32,.85)');
-      bg.addColorStop(1, 'rgba(6,20,16,0)');
-      ctx.fillStyle = bg;
-      ctx.fillRect(0, y - 42, W, 84);
+    // 本文
+    var pulse = 1 + 0.06 * Math.sin(G.elapsed * 18);
+    var size = 52 * pulse * (0.75 + 0.25 * appear);
+    ctx.font = '900 ' + size.toFixed(0) + 'px "Arial Black", Impact, sans-serif';
+    ctx.lineWidth = 8;
+    ctx.strokeStyle = 'rgba(0,0,0,.55)';
+    ctx.strokeText('LEVEL UP!', W / 2, y - 12);
+    var grd = ctx.createLinearGradient(0, y - 34, 0, y + 10);
+    grd.addColorStop(0, '#ffffff');
+    grd.addColorStop(0.5, '#7CFFCB');
+    grd.addColorStop(1, '#3fd3a8');
+    ctx.fillStyle = grd;
+    ctx.fillText('LEVEL UP!', W / 2, y - 12);
 
-      ctx.globalAlpha = 1;
-      var pulse = 1 + 0.05 * Math.sin(G.elapsed * 20);
-      ctx.fillStyle = '#7CFFCB';
-      ctx.font = '900 ' + (38 * pulse).toFixed(0) + 'px "Arial Black", Impact, sans-serif';
-      ctx.lineWidth = 6;
-      ctx.strokeStyle = 'rgba(0,0,0,.5)';
-      ctx.strokeText('LEVEL UP!', W / 2, y - 6);
-      ctx.fillText('LEVEL UP!', W / 2, y - 6);
+    ctx.fillStyle = '#dff7ec';
+    ctx.font = '900 15px system-ui, sans-serif';
+    var more = G.pendingLevels > 1 ? '  ×' + G.pendingLevels : '';
+    ctx.fillText('強化を選びます' + more, W / 2, y + 22);
 
-      ctx.fillStyle = '#dff7ec';
-      ctx.font = '700 13px system-ui, sans-serif';
-      var more = G.pendingLevels > 1 ? '（' + G.pendingLevels + ' 回ぶん）' : '';
-      ctx.fillText('まもなく強化を選びます' + more, W / 2, y + 24);
+    // 残り時間
+    var bw = 300;
+    ctx.fillStyle = 'rgba(255,255,255,.18)';
+    ctx.fillRect(W / 2 - bw / 2, y + 40, bw, 5);
+    ctx.fillStyle = '#7CFFCB';
+    ctx.fillRect(W / 2 - bw / 2, y + 40, bw * (1 - k), 5);
 
-      // 残り時間のバー
-      var bw = 260;
-      ctx.fillStyle = 'rgba(255,255,255,.15)';
-      ctx.fillRect(W / 2 - bw / 2, y + 36, bw, 4);
-      ctx.fillStyle = '#7CFFCB';
-      ctx.fillRect(W / 2 - bw / 2, y + 36, bw * (1 - k), 4);
-    }
     ctx.restore();
   }
 

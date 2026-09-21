@@ -16,8 +16,31 @@
 (function (global) {
   'use strict';
 
-  var COLS = 15;
+  var COLS = 15;            // ウェーブ1〜5の列数（以降は増えていく）
   var MIN_PLATES = 16;
+
+  // 盤面に使える領域（game.js の W=1280 / 皿の帯 348px と揃えてある）
+  var FIELD_W = 1200;
+  var BAND_H = 348;
+
+  /**
+   * ウェーブが進むほど「皿を小さく・数を多く」する。
+   * 序盤は今までどおりの大きさ、6ウェーブ目あたりから少しずつ細かくなる。
+   */
+  function metrics(wave) {
+    var extra = Math.max(0, Math.floor((wave - 5) / 2));
+    var cols = Math.min(34, COLS + extra);
+    var gapX = Math.max(3, 6 * COLS / cols);
+    var cellW = (FIELD_W - (cols - 1) * gapX) / cols;
+    var cellH = Math.max(11, cellW / 2.85);
+    var gapY = Math.max(4, 9 * cellH / 26);
+    var rowCap = Math.floor((BAND_H + gapY) / (cellH + gapY));
+    var maxRows = Math.max(4, Math.min(rowCap, 8 + Math.floor(wave / 3)));
+    return {
+      cols: cols, cellW: cellW, cellH: cellH,
+      gapX: gapX, gapY: gapY, maxRows: maxRows
+    };
+  }
 
   /* ---------- 決定的な乱数（mulberry32） ---------- */
   function makeRng(seed) {
@@ -229,24 +252,26 @@
   }
 
   /* ---------- 本体 ---------- */
-  function generate(wave, salt) {
+  function generate(wave, salt, m) {
     var rand = makeRng((wave * 2654435761 + salt * 40503) >>> 0);
+    var cols = m.cols;
 
     var shape = SHAPES[Math.floor(rand() * SHAPES.length) % SHAPES.length];
 
-    // 行数はウェーブとともに増える（上限10）
+    // 形の縦横比を保ったまま、細かくなったぶん行数も増やす
     var growth = Math.min(4, Math.floor((wave - 1) / 3));
-    var rows = Math.min(10, shape.rows[0] + growth + (rand() < 0.35 ? 1 : 0));
-    rows = Math.max(4, Math.min(10, rows));
+    var baseRows = Math.round(shape.rows[0] * cols / COLS);
+    var rows = baseRows + growth + (rand() < 0.35 ? 1 : 0);
+    rows = Math.max(4, Math.min(m.maxRows, rows));
 
     var grid = [];
-    for (var r = 0; r < rows; r++) grid.push(new Array(COLS).fill(0));
+    for (var r = 0; r < rows; r++) grid.push(new Array(cols).fill(0));
 
     // 基本形（左右対称に畳む：どちらかが皿ならその位置は皿）
     for (r = 0; r < rows; r++) {
-      for (var c = 0; c < COLS; c++) {
-        var m = COLS - 1 - c;
-        var v = shape.f(c, r, COLS, rows) || shape.f(m, r, COLS, rows);
+      for (var c = 0; c < cols; c++) {
+        var mi = cols - 1 - c;
+        var v = shape.f(c, r, cols, rows) || shape.f(mi, r, cols, rows);
         grid[r][c] = v ? 1 : 0;
       }
     }
@@ -255,10 +280,10 @@
     var density = [1.0, 0.86, 0.72][Math.floor(rand() * 3)];
     if (density < 1) {
       for (r = 0; r < rows; r++) {
-        for (c = 0; c <= (COLS - 1) / 2; c++) {
+        for (c = 0; c <= (cols - 1) / 2; c++) {
           if (grid[r][c] && rand() > density) {
             grid[r][c] = 0;
-            grid[r][COLS - 1 - c] = 0;
+            grid[r][cols - 1 - c] = 0;
           }
         }
       }
@@ -274,17 +299,17 @@
     }
     if (wallDef.w) {
       for (r = 0; r < rows; r++) {
-        for (c = 0; c < COLS; c++) {
-          var mc = COLS - 1 - c;
-          if (wallDef.w(c, r, COLS, rows) || wallDef.w(mc, r, COLS, rows)) grid[r][c] = 5;
+        for (c = 0; c < cols; c++) {
+          var mc = cols - 1 - c;
+          if (wallDef.w(c, r, cols, rows) || wallDef.w(mc, r, cols, rows)) grid[r][c] = 5;
         }
       }
     }
 
     // ★ 詰みが起きないことを保証する
-    var fix = ensureReachable(grid, rows, COLS);
+    var fix = ensureReachable(grid, rows, cols);
 
-    return { grid: grid, rows: rows, cols: COLS, shape: shape, wallDef: wallDef, fix: fix };
+    return { grid: grid, rows: rows, cols: cols, shape: shape, wallDef: wallDef, fix: fix };
   }
 
   /**
@@ -292,13 +317,14 @@
    * 皿が少なすぎる盤面になったら種を変えて引き直す。
    */
   function build(wave) {
+    var m = metrics(wave);
     var g = null;
     for (var salt = 0; salt < 8; salt++) {
-      g = generate(wave, salt);
+      g = generate(wave, salt, m);
       if (countPlates(g.grid, g.rows, g.cols) >= MIN_PLATES) break;
     }
 
-    var grid = g.grid, rows = g.rows;
+    var grid = g.grid, rows = g.rows, cols = g.cols;
     var rand = makeRng((wave * 971 + 12345) >>> 0);
 
     // 硬い皿（上の行ほど硬い＝下から崩す気持ちよさ）
@@ -306,7 +332,7 @@
     var steelRate = Math.min(0.18, Math.max(0, (wave - 5) * 0.028));
     var cells = [];
     for (var r = 0; r < rows; r++) {
-      for (var c = 0; c < COLS; c++) if (grid[r][c] === 1) cells.push([r, c]);
+      for (var c = 0; c < cols; c++) if (grid[r][c] === 1) cells.push([r, c]);
     }
     for (var i = 0; i < cells.length; i++) {
       var rr = cells[i][0], cc = cells[i][1];
@@ -324,8 +350,9 @@
 
     var name = g.shape.name + (g.wallDef.name ? ' · ' + g.wallDef.name : '');
     return {
-      grid: grid, rows: rows, cols: COLS, name: name,
-      total: countPlates(grid, rows, COLS),
+      grid: grid, rows: rows, cols: cols, name: name,
+      cellW: m.cellW, cellH: m.cellH, gapX: m.gapX, gapY: m.gapY,
+      total: countPlates(grid, rows, cols),
       hasWalls: !!g.wallDef.w,
       fix: g.fix
     };
@@ -333,6 +360,9 @@
 
   global.Levels = {
     build: build,
+    metrics: metrics,
+    FIELD_W: FIELD_W,
+    BAND_H: BAND_H,
     COLS: COLS,
     SHAPES: SHAPES,
     WALLS: WALLS,

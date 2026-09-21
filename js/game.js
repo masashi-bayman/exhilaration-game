@@ -37,7 +37,7 @@
   function isWall(p) { return p.type === WALL; }
 
   var BURST_TIME = 6.5;
-  var LEVELUP_LEAD = 1.5;   // 「そろそろ来ます」から実際にカードが出るまで
+  var LEVELUP_LEAD = 1.6;   // 経験値が満タンになってから、カードが出るまで
   var GUARD_WINDOW = 0.14;
   var GUARD_COOLDOWN = 0.45;
 
@@ -72,6 +72,10 @@
     burst: 0, burstUsed: 0, burstScore: 0,
 
     plates: [], remaining: 0, layoutName: '', plateTop: 150,
+    // 皿はきれいな格子に並ぶので、格子を索引しておけば
+    // 皿が何百枚あってもボール1個あたり数枚の判定で済む
+    cellW: 74, cellH: 26, gapX: 6, gapY: 9,
+    gridOx: 0, gridOy: 0, gridCols: 0, gridRows: 0, gridCells: null,
     balls: [], paddle: null,
 
     // --- レベルアップ（3択強化） ---
@@ -96,7 +100,11 @@
   function paddleWidth() {
     return G.cfg.paddleW * (1 + 0.13 * lv('paddle')) * (G.burst > 0 ? 1.18 : 1);
   }
-  function ballRadius() { return BALL_R * (1 + 0.18 * lv('size')); }
+  function ballRadius() {
+    // 後半は皿が細かくなるので、ボールも一緒に小さくする
+    var shrink = 1 - Math.min(0.38, Math.max(0, G.wave - 5) * 0.02);
+    return Math.max(4.5, BALL_R * shrink) * (1 + 0.18 * lv('size'));
+  }
   function ballBaseSpeed() {
     return G.cfg.ballSpeed * (1 + (G.wave - 1) * G.cfg.speedUp) * (1 + 0.07 * lv('speed'));
   }
@@ -150,31 +158,41 @@
     var L = Levels.build(wave);
     G.layoutName = L.name;
     G.plates = [];
-    var totalW = L.cols * PLATE_W + (L.cols - 1) * GAP_X;
+    // ウェーブが進むほどセルが小さくなり、的の数が増える
+    var cw = L.cellW, ch = L.cellH, gx = L.gapX, gy = L.gapY;
+    G.cellW = cw; G.cellH = ch; G.gapX = gx; G.gapY = gy;
+
+    var totalW = L.cols * cw + (L.cols - 1) * gx;
     var ox = (W - totalW) / 2;
 
     // ウェーブが進むほど盤面が下がってくる（＝事故りやすくなる）。
     // ただしパドルの上には必ず FLOOR_MARGIN を残すので、理不尽にはならない。
-    var gridH = L.rows * PLATE_H + (L.rows - 1) * GAP_Y;
+    var gridH = L.rows * ch + (L.rows - 1) * gy;
     var sink = Math.min(96, Math.floor(wave / 2) * 6);
     var top = Math.min(PLATE_TOP + sink, PADDLE_Y - FLOOR_MARGIN - gridH);
     top = Math.max(HUD_H + 34, top);
     G.plateTop = top;
 
+    G.gridOx = ox; G.gridOy = top;
+    G.gridCols = L.cols; G.gridRows = L.rows;
+    G.gridCells = new Array(L.cols * L.rows).fill(null);
+
     for (var r = 0; r < L.rows; r++) {
       for (var c = 0; c < L.cols; c++) {
         var t = L.grid[r][c];
         if (!t) continue;
-        G.plates.push({
-          x: ox + c * (PLATE_W + GAP_X),
-          y: top + r * (PLATE_H + GAP_Y),
-          w: PLATE_W, h: PLATE_H,
+        var plate = {
+          x: ox + c * (cw + gx),
+          y: top + r * (ch + gy),
+          w: cw, h: ch,
           type: t, hp: PLATE_HP[t], maxhp: PLATE_HP[t],
           alive: true, row: r, col: c,
           hue: t === WALL ? 220 : (t === 4 ? 45 : (t === 3 ? 205 : (t === 2 ? 22 :
                 172 + r * (150 / Math.max(1, L.rows - 1))))),
           shine: 0, drop: -rnd(0.05, 0.45)   // 登場アニメ用
-        });
+        };
+        G.plates.push(plate);
+        G.gridCells[r * L.cols + c] = plate;
       }
     }
     // 強化「爆発皿の増設」
@@ -330,7 +348,7 @@
 
     // 強化「電撃連鎖」
     if (lv('chain') && depth < 3 && Math.random() < 0.20 * lv('chain')) {
-      var q = nearestPlate(c.x, c.y, 210, p);
+      var q = nearestPlate(c.x, c.y, 210 * clamp(G.cellW / 74, 0.55, 1.15), p);
       if (q) {
         var qc = plateCenter(q);
         FX.streak((c.x + qc.x) / 2, (c.y + qc.y) / 2,
@@ -366,7 +384,8 @@
   }
 
   function explode(x, y, depth, radius) {
-    var R = radius || 108;
+    var scale = clamp(G.cellW / 74, 0.55, 1.15);
+    var R = (radius || 108) * scale;
     Sfx.boom((x / W) * 2 - 1);
     FX.ring(x, y, 8, R * 1.25, '#ffd166', 0.45, 9);
     FX.ring(x, y, 4, R * 0.7, '#ffffff', 0.3, 5);
@@ -587,8 +606,9 @@
     if (G.pendingLevels > 0 && canOpen && !G.levelUpArmed) {
       G.levelUpArmed = true;
       G.levelUpTimer = LEVELUP_LEAD;
-      Sfx.ding();
-      FX.ring(W / 2, HUD_H + 40, 10, 260, '#7CFFCB', 0.6, 5);
+      Sfx.levelWarn();
+      FX.ring(W / 2, HUD_H + 56, 10, 320, '#7CFFCB', 0.7, 6);
+      FX.flash(0.18, '124,255,203');
     }
     if (G.levelUpArmed) {
       if (canOpen) G.levelUpTimer -= dt;
@@ -730,10 +750,21 @@
       hitPaddle(b, pan);
     }
 
-    // 皿
-    for (var i = 0; i < G.plates.length; i++) {
-      var p = G.plates[i];
-      if (!p.alive || p.drop < 0.4) continue;
+    // 皿（格子索引で、ボールが重なりうる升だけを調べる）
+    var stepX = G.cellW + G.gapX, stepY = G.cellH + G.gapY;
+    var c0 = Math.floor((b.x - b.r - G.gridOx) / stepX);
+    var c1 = Math.floor((b.x + b.r - G.gridOx) / stepX);
+    var r0 = Math.floor((b.y - b.r - G.gridOy) / stepY);
+    var r1 = Math.floor((b.y + b.r - G.gridOy) / stepY);
+    if (c0 < 0) c0 = 0;
+    if (r0 < 0) r0 = 0;
+    if (c1 > G.gridCols - 1) c1 = G.gridCols - 1;
+    if (r1 > G.gridRows - 1) r1 = G.gridRows - 1;
+
+    for (var gr = r0; gr <= r1; gr++) {
+    for (var gc = c0; gc <= c1; gc++) {
+      var p = G.gridCells ? G.gridCells[gr * G.gridCols + gc] : null;
+      if (!p || !p.alive || p.drop < 0.4) continue;
       var cx = clamp(b.x, p.x, p.x + p.w);
       var cy = clamp(b.y, p.y, p.y + p.h);
       var dx = b.x - cx, dy = b.y - cy;
@@ -761,7 +792,7 @@
         Sfx.clink((b.x / W) * 2 - 1);
         FX.spark(b.x, b.y, 4, 210, null, 170);
         FX.shake(2);
-        break;
+        return false;   // 入れ子ループなので break ではなく抜ける
       }
 
       var dmg = 1 + lv('power');
@@ -776,7 +807,8 @@
         smash(p, 0);
         b.speed = clamp(b.speed + 3, 200, G.cfg.maxSpeed);
       }
-      break; // 1ステップ1皿まで（安定性のため）
+      return false; // 1ステップ1皿まで（安定性のため）
+    }
     }
     return false;
   }
@@ -886,7 +918,8 @@
     resetBall();
     G.state = 'ready';
     G.bannerText = 'WAVE ' + G.wave;
-    G.bannerSub = G.layoutName + '  /  x' + G.waveMul.toFixed(2) + ' SCORE';
+    G.bannerSub = G.layoutName + '  /  スコア x' +
+                  (G.waveMul < 1000 ? G.waveMul.toFixed(2) : fmtS(G.waveMul));
     G.bannerTimer = 1.6;
   }
 
@@ -991,7 +1024,7 @@
 
   global.Game = {
     W: W, H: H, HUD_H: HUD_H, PADDLE_Y: PADDLE_Y, PADDLE_H: PADDLE_H,
-    MODES: MODES, G: G,
+    MODES: MODES, G: G, LEVELUP_LEAD: LEVELUP_LEAD,
     start: start, update: update, launch: launch,
     pressGuard: pressGuard, triggerBurst: triggerBurst,
     pickUpgrade: pickUpgrade, rerollChoices: rerollChoices,
